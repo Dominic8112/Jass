@@ -25,12 +25,13 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
 .chip{display:inline-flex;align-items:center;gap:6px;background:#161b22;border:1px solid #30363d;border-radius:20px;padding:6px 12px;font-size:13px;font-weight:500;color:#e6edf3}
 .chip .x{color:#484f58;cursor:pointer;font-size:16px;font-weight:700}.chip .x:hover{color:#f85149}
 .pcount{font-size:12px;color:#484f58;margin-top:4px}
-.ro{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:6px;cursor:pointer;color:#e6edf3}
-.ro.sel{border-color:#e7af3b;background:rgba(231,175,59,.08)}
-.ro .dot{width:18px;height:18px;border-radius:50%;border:2px solid #30363d;flex-shrink:0}
-.ro.sel .dot{border-color:#e7af3b;background:#e7af3b}
-.ro .rt{font-size:13px;font-weight:500;color:#e6edf3}
-.ro .rd{font-size:11px;color:#8b949e}
+/* FIX 1: Renamed round-option from .ro to .ropt to avoid conflict with rank .ro */
+.ropt{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:6px;cursor:pointer;color:#e6edf3}
+.ropt.sel{border-color:#e7af3b;background:rgba(231,175,59,.08)}
+.ropt .dot{width:18px;height:18px;border-radius:50%;border:2px solid #30363d;flex-shrink:0}
+.ropt.sel .dot{border-color:#e7af3b;background:#e7af3b}
+.ropt .rt{font-size:13px;font-weight:500;color:#e6edf3}
+.ropt .rd{font-size:11px;color:#8b949e}
 .cr{display:none;align-items:center;gap:8px;margin-top:8px}
 .cr input{width:70px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e7af3b;font-size:16px;font-weight:700;text-align:center;padding:8px;font-family:‘DM Sans’}
 .cr input:focus{outline:none;border-color:#e7af3b}
@@ -96,7 +97,7 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
 
 .rr{display:flex;align-items:center;padding:10px 14px;background:#161b22;border:1px solid #21262d;border-radius:10px;margin-bottom:6px}
 .rpos{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;margin-right:10px;flex-shrink:0}
-.r1{background:#e7af3b;color:#1a1a2e}.r2{background:#8b949e;color:#1a1a2e}.r3{background:#cd7f32;color:#fff}.ro{background:#21262d;color:#484f58}
+.r1{background:#e7af3b;color:#1a1a2e}.r2{background:#8b949e;color:#1a1a2e}.r3{background:#cd7f32;color:#fff}.rother{background:#21262d;color:#484f58}
 .rnm{font-weight:700;font-size:14px;flex:1;color:#e6edf3}
 .rst{text-align:right;font-size:11px;color:#8b949e}.rst .pp{font-size:16px;font-weight:700;color:#e7af3b;display:block}
 
@@ -144,19 +145,21 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
 // ====== SETUP ======
 let sp=[],selR=0,rMode='';
 
-function addP(){const i=document.getElementById('ni'),n=i.value.trim();if(!n||sp.includes(n)||sp.length>=10){i.value='';return}sp.push(n);i.value='';i.focus();rSP();uRO()}
+// FIX 3: Case-insensitive duplicate check
+function addP(){const i=document.getElementById('ni'),n=i.value.trim();if(!n||sp.some(x=>x.toLowerCase()===n.toLowerCase())||sp.length>=10){i.value='';return}sp.push(n);i.value='';i.focus();rSP();uRO()}
 function remP(i){sp.splice(i,1);rSP();uRO()}
 function rSP(){document.getElementById('plist').innerHTML=sp.map((n,i)=>'<span class="chip">'+n+'<span class="x" onclick="remP('+i+')">✕</span></span>').join('');document.getElementById('pcnt').textContent=sp.length+' Spieler'+(sp.length<4?' (noch '+(4-sp.length)+' nötig)':'')}
 
 function maxC(n){const t=[];for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)t.push([i,j]);let c=0;for(let a=0;a<t.length;a++)for(let b=a+1;b<t.length;b++){if(new Set([...t[a],...t[b]]).size===4)c++}return c}
 
+// FIX 1: Using .ropt class instead of .ro
 function uRO(){const n=sp.length,s=document.getElementById('rsec');if(n<4){s.style.display='none';document.getElementById('sbtn').disabled=true;return}
 s.style.display='';const mx=maxC(n),sh=Math.min(mx,Math.max(3,Math.ceil(n*1.5))),md=Math.min(mx,Math.ceil(mx/2));
 const opts=[{id:'all',l:'Alle Kombinationen',d:mx+' Runden',v:mx}];
 if(mx>8)opts.push({id:'med',l:'Mittleres Turnier',d:md+' Runden',v:md});
 if(mx>5)opts.push({id:'short',l:'Kurzes Turnier',d:sh+' Runden',v:sh});
 opts.push({id:'custom',l:'Eigene Anzahl',d:'Du bestimmst',v:0});
-document.getElementById('ropts').innerHTML=opts.map(o=>'<div class="ro'+(rMode===o.id?' sel':'')+'" onclick="selR2(\''+o.id+'\','+o.v+')"><div class="dot"></div><div><div class="rt">'+o.l+'</div><div class="rd">'+o.d+'</div></div></div>').join('');
+document.getElementById('ropts').innerHTML=opts.map(o=>'<div class="ropt'+(rMode===o.id?' sel':'')+'" onclick="selR2(\''+o.id+'\','+o.v+')"><div class="dot"></div><div><div class="rt">'+o.l+'</div><div class="rd">'+o.d+'</div></div></div>').join('');
 document.getElementById('crow').style.display=rMode==='custom'?'flex':'none';
 const nt=n*(n-1)/2;
 document.getElementById('rinfo').innerHTML='👥 '+n+' Spieler → '+nt+' mögliche 2er-Teams → max. '+mx+' Spiele. Pro Spiel spielen 4, '+(n-4)+' pausier'+(n-4===1?'t':'en')+'.';
@@ -217,7 +220,7 @@ function startT(){
   showApp();
 }
 
-function newT(){if(!confirm('Turnier beenden und neu starten?'))return;TN=null;D={};localStorage.removeItem('jt8_t');localStorage.removeItem('jt8_scores');document.getElementById('AS').style.display='none';document.getElementById('SS').style.display='';rSP();uRO()}
+function newT(){if(!confirm('Turnier beenden und neu starten?'))return;sp=TN?[...TN.players]:[];selR=0;rMode='';TN=null;D={};localStorage.removeItem('jt8_t');localStorage.removeItem('jt8_scores');document.getElementById('AS').style.display='none';document.getElementById('SS').style.display='';rSP();uRO()}
 
 function showApp(){
   document.getElementById('SS').style.display='none';
@@ -232,8 +235,9 @@ function tog(i){document.getElementById('gb-'+i).classList.toggle('open')}
 function togW(g,r){document.getElementById('wb-'+g+'-'+r).classList.toggle('open')}
 function rd(g,r){const k=g+'-'+r;if(!D[k])D[k]={s1:null,s2:null,m:0,e:null,w:{}};return D[k]}
 
-function setS(gi,ri,t){const r=rd(gi,ri);if(r.m)return;const el=document.getElementById('i-'+gi+'-'+ri+'-'+t);const v=parseInt(el.value);
-if(isNaN(v)||el.value===''){r.s1=null;r.s2=null;r.e=null}else{const c=Math.max(0,Math.min(NRM,v));if(t==='s1'){r.s1=c;r.s2=NRM-c;r.e='s1'}else{r.s2=c;r.s1=NRM-c;r.e='s2'}}
+// FIX 2: Clamp score 0–157 and sync input display immediately
+function setS(gi,ri,t){const r=rd(gi,ri);if(r.m)return;const el=document.getElementById('i-'+gi+'-'+ri+'-'+t);const raw=el.value;
+if(raw===''||isNaN(parseInt(raw))){r.s1=null;r.s2=null;r.e=null}else{let v=parseInt(raw);v=Math.max(0,Math.min(NRM,v));if(t==='s1'){r.s1=v;r.s2=NRM-v;r.e='s1'}else{r.s2=v;r.s1=NRM-v;r.e='s2'}}
 sv();uDisp(gi,ri);uTot(gi)}
 
 function setM(gi,ri,tm){const r=rd(gi,ri);if(r.m===tm){r.m=0;r.s1=null;r.s2=null;r.e=null}else{r.m=tm;if(tm===1){r.s1=MTC;r.s2=0}else{r.s2=MTC;r.s1=0}r.e=null}
@@ -265,17 +269,24 @@ const hs=document.getElementById('hs-'+gi);if(hs)hs.textContent=t.any?t.s1+':'+t
 
 function uPr(){let d=0;for(let i=0;i<TN.nr;i++)if(gTot(i).ok)d++;document.getElementById('pc').textContent=d;document.getElementById('pf').style.width=(d/TN.nr*100)+'%'}
 
+// FIX 4: Find first unfinished game index
+function firstUnfinished(){for(let i=0;i<TN.nr;i++){if(!gTot(i).ok)return i}return -1}
+
 function renderG(){
   const P=TN.players;let h='';
+  // FIX 4: Determine which game to auto-open
+  const autoOpen=firstUnfinished();
+
   TN.rounds.forEach((g,gi)=>{
     const n1=P[g.t1[0]]+' & '+P[g.t1[1]],n2=P[g.t2[0]]+' & '+P[g.t2[1]];
     const s1=P[g.t1[0]][0]+'+'+P[g.t1[1]][0],s2=P[g.t2[0]][0]+'+'+P[g.t2[1]][0];
     const pa=g.pa.length?g.pa.map(i=>P[i]).join(' & '):'—';const t=gTot(gi);
+    const isOpen=gi===autoOpen;
     h+='<div class="gc"><div class="gh" onclick="tog('+gi+')"><span class="gnum">S'+(gi+1)+'</span><span class="gtitle">'+n1+' vs '+n2+'</span><span class="ghscore" id="hs-'+gi+'">'+(t.any?t.s1+':'+t.s2:'')+'</span><span class="ghst" id="hst-'+gi+'">'+(t.ok?'✅':t.any?'⏳':'')+'</span></div>';
-    h+='<div class="gbody" id="gb-'+gi+'">'+(g.pa.length?'<div class="pause">⏸ '+pa+' pausiert</div>':'');
+    h+='<div class="gbody'+(isOpen?' open':'')+'" id="gb-'+gi+'">'+(g.pa.length?'<div class="pause">⏸ '+pa+' pausiert</div>':'');
     for(let ri=0;ri<4;ri++){const ans=g.ans[ri];const r=rd(gi,ri);const{w1,w2}=gW(gi,ri);const im=!!r.m;const a1=r.e==='s2'||im;const a2=r.e==='s1'||im;
       h+='<div class="ans-hdr"><span class="ans-badge">Ansage '+(ri+1)+'</span><span class="ans-who">🎯 '+P[ans]+' sagt an</span></div>';
-      h+='<div class="srow"><span class="tn" style="color:#e7af3b">'+s1+'</span><input id="i-'+gi+'-'+ri+'-s1" type="number" inputmode="numeric" placeholder="Pkt"'+(a1?' class="auto"':'')+(im?' readonly':'')+' value="'+(r.s1!==null?r.s1:'')+'" onfocus="this.select()" oninput="setS('+gi+','+ri+',\'s1\')"><span class="vslbl">:</span><input id="i-'+gi+'-'+ri+'-s2" type="number" inputmode="numeric" placeholder="Pkt"'+(a2?' class="auto"':'')+(im?' readonly':'')+' value="'+(r.s2!==null?r.s2:'')+'" onfocus="this.select()" oninput="setS('+gi+','+ri+',\'s2\')"><span class="tn" style="color:#58a6ff;text-align:right">'+s2+'</span></div>';
+      h+='<div class="srow"><span class="tn" style="color:#e7af3b">'+s1+'</span><input id="i-'+gi+'-'+ri+'-s1" type="number" inputmode="numeric" min="0" max="'+NRM+'" placeholder="Pkt"'+(a1?' class="auto"':'')+(im?' readonly':'')+' value="'+(r.s1!==null?r.s1:'')+'" onfocus="this.select()" oninput="setS('+gi+','+ri+',\'s1\')"><span class="vslbl">:</span><input id="i-'+gi+'-'+ri+'-s2" type="number" inputmode="numeric" min="0" max="'+NRM+'" placeholder="Pkt"'+(a2?' class="auto"':'')+(im?' readonly':'')+' value="'+(r.s2!==null?r.s2:'')+'" onfocus="this.select()" oninput="setS('+gi+','+ri+',\'s2\')"><span class="tn" style="color:#58a6ff;text-align:right">'+s2+'</span></div>';
       h+='<div class="mrow"><div class="mbtn'+(r.m===1?' active':'')+'" id="mb-'+gi+'-'+ri+'-1" onclick="setM('+gi+','+ri+',1)">💥 Match '+s1+'</div><div class="mbtn'+(r.m===2?' active':'')+'" id="mb-'+gi+'-'+ri+'-2" onclick="setM('+gi+','+ri+',2)">💥 Match '+s2+'</div></div>';
       h+='<div class="wtoggle" onclick="togW('+gi+','+ri+')">+ Weisen</div><div class="wblock" id="wb-'+gi+'-'+ri+'"><div class="whdr"><span style="color:#e7af3b">'+s1+'</span><span>Weis</span><span style="color:#58a6ff">'+s2+'</span></div>';
       WS.forEach(wt=>{const c1=(r.w&&r.w[wt.id+'-1'])||0,c2=(r.w&&r.w[wt.id+'-2'])||0;
@@ -292,9 +303,10 @@ function pS(){const P=TN.players,s={};P.forEach((n,i)=>s[i]={n,w:0,l:0,d:0,f:0,a
     g.t1.forEach(p=>{s[p].g++;s[p].f+=t.s1;s[p].a+=t.s2;s[p].weis+=tw1;s[p].mc+=m1;if(win===1){s[p].w++;s[p].tp+=3}else if(win===0&&t.ok){s[p].d++;s[p].tp+=1}else if(win===2)s[p].l++});
     g.t2.forEach(p=>{s[p].g++;s[p].f+=t.s2;s[p].a+=t.s1;s[p].weis+=tw2;s[p].mc+=m2;if(win===2){s[p].w++;s[p].tp+=3}else if(win===0&&t.ok){s[p].d++;s[p].tp+=1}else if(win===1)s[p].l++})}return s}
 
+// FIX 1: Using .rother instead of .ro for rank positions 4+
 function rRk(){const s=pS();const so=Object.values(s).sort((a,b)=>b.tp!==a.tp?b.tp-a.tp:(b.f-b.a)-(a.f-a.a));
   if(so.every(x=>!x.g)){document.getElementById('p-rank').innerHTML='<div class="empty">Noch keine Resultate 🃏</div>';return}
-  let h='';so.forEach((s,i)=>{const d=s.f-s.a;const c=i===0?'r1':i===1?'r2':i===2?'r3':'ro';
+  let h='';so.forEach((s,i)=>{const d=s.f-s.a;const c=i===0?'r1':i===1?'r2':i===2?'r3':'rother';
     h+='<div class="rr"><div class="rpos '+c+'">'+(i+1)+'</div><div class="rnm">'+(i===0?'👑 ':'')+s.n+'</div><div class="rst"><span class="pp">'+s.tp+' Pkt</span>'+s.w+'S '+s.d+'U '+s.l+'N · '+(d>=0?'+':'')+d+'</div></div>'});
   document.getElementById('p-rank').innerHTML=h}
 
