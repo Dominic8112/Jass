@@ -174,31 +174,47 @@ function selC(){rMode='custom';const v=parseInt(document.getElementById('cri').v
 function vStart(){document.getElementById('sbtn').disabled=!(sp.length>=4&&selR>0)}
 
 // ====== GENERATE BALANCED SCHEDULE ======
+function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}return arr}
+
 function genSched(players,nr){
   const n=players.length;
   const teams=[];for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)teams.push([i,j]);
   const matches=[];for(let a=0;a<teams.length;a++)for(let b=a+1;b<teams.length;b++){if(new Set([...teams[a],...teams[b]]).size===4)matches.push({t1:teams[a],t2:teams[b]})}
 
+  // Shuffle matches so each tournament is different
+  shuffle(matches);
+
   const sel=[];const pg=Array(n).fill(0);const used=new Set();
+  // Track how often each pair plays together as partners
+  const partnerCount={};
+  function pKey(a,b){return Math.min(a,b)+'-'+Math.max(a,b)}
+  function getPC(a,b){return partnerCount[pKey(a,b)]||0}
+  function addPC(a,b){partnerCount[pKey(a,b)]=(partnerCount[pKey(a,b)]||0)+1}
 
   for(let r=0;r<nr;r++){
-    // Find match that minimizes max player games (most balanced)
-    let bestIdx=-1,bestMax=Infinity,bestSum=Infinity;
+    // Score all matches, collect candidates with best score
+    let bestScore=Infinity;const candidates=[];
     for(let mi=0;mi<matches.length;mi++){
-      // Prefer unused matches first
       const penalty=used.has(mi)?1000:0;
       const m=matches[mi];
       const ps=[...m.t1,...m.t2];
       const simGames=ps.map(p=>pg[p]+1);
+      // Balance: minimize max games per player
       const maxG=Math.max(...simGames)+penalty;
-      const sumG=simGames.reduce((a,b)=>a+b,0)+penalty;
-      if(maxG<bestMax||(maxG===bestMax&&sumG<bestSum)){bestMax=maxG;bestSum=sumG;bestIdx=mi}
+      // Partner diversity: penalize repeated partner pairings
+      const partnerPen=(getPC(m.t1[0],m.t1[1])+getPC(m.t2[0],m.t2[1]))*0.5;
+      const score=maxG+partnerPen;
+      if(score<bestScore){bestScore=score;candidates.length=0;candidates.push(mi)}
+      else if(score===bestScore){candidates.push(mi)}
     }
+    // Random pick among equally good candidates
+    const bestIdx=candidates[Math.floor(Math.random()*candidates.length)];
     const m=matches[bestIdx];
     const allIn=new Set([...m.t1,...m.t2]);
     const pa=[];for(let i=0;i<n;i++)if(!allIn.has(i))pa.push(i);
     sel.push({t1:[...m.t1],t2:[...m.t2],pa,ans:[m.t1[0],m.t2[0],m.t1[1],m.t2[1]]});
     m.t1.forEach(p=>pg[p]++);m.t2.forEach(p=>pg[p]++);
+    addPC(m.t1[0],m.t1[1]);addPC(m.t2[0],m.t2[1]);
     used.add(bestIdx);
   }
   return sel;
