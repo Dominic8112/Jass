@@ -241,9 +241,28 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
 <div class="lobby" id="LOBBY">
   <div class="lobby-hdr"><h2>🃏 Lobby</h2><div class="lobby-user"><span class="uname" id="l-uname"></span><button class="logout-btn" onclick="doLogout()">Abmelden</button></div></div>
   <div class="import-banner" id="importBanner"><div class="ib-title">📦 Lokales Turnier gefunden</div><div class="ib-info" id="importInfo"></div><button onclick="doImport()">Importieren</button><button class="ib-skip" onclick="skipImport()">Verwerfen</button></div>
-  <div class="lobby-actions"><button class="la-btn la-create" onclick="showSetup()">+ Neues Turnier</button><button class="la-btn la-join" onclick="openJoinModal()">🔗 Beitreten</button></div>
+  <div class="lobby-actions">
+    <button class="la-btn la-create" onclick="showSetup()">+ Neues Turnier</button>
+    <button class="la-btn la-join" onclick="openJoinModal()">🔗 Beitreten</button>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button class="la-btn" style="background:#161b22;color:#e7af3b;border:1px solid #30363d;font-size:12px;padding:10px" onclick="showProfile()">👤 Profil</button>
+    <button class="la-btn" style="background:#161b22;color:#58a6ff;border:1px solid #30363d;font-size:12px;padding:10px" onclick="showEwige()">🏆 Ewige Rangliste</button>
+  </div>
   <div class="lobby-list"><h3>Meine Turniere</h3><div id="l-list"><div class="ldr">Lade...</div></div></div>
 </div>
+
+<!-- PROFILE MODAL -->
+
+<div class="modal-bg" id="profileModal"><div class="modal" style="max-height:80vh;overflow-y:auto"><button class="modal-close" onclick="document.getElementById('profileModal').classList.remove('open')">✕</button><h3>👤 Mein Profil</h3><div id="profile-content"><div class="ldr">Lade...</div></div></div></div>
+
+<!-- EWIGE RANGLISTE MODAL -->
+
+<div class="modal-bg" id="ewigeModal"><div class="modal" style="max-height:80vh;overflow-y:auto"><button class="modal-close" onclick="document.getElementById('ewigeModal').classList.remove('open')">✕</button><h3>🏆 Ewige Rangliste</h3><div id="ewige-content"><div class="ldr">Lade...</div></div></div></div>
+
+<!-- H2H MODAL -->
+
+<div class="modal-bg" id="h2hModal"><div class="modal" style="max-height:80vh;overflow-y:auto"><button class="modal-close" onclick="document.getElementById('h2hModal').classList.remove('open')">✕</button><h3>⚔️ Head-to-Head</h3><div id="h2h-content"><div class="ldr">Lade...</div></div></div></div>
 
 <!-- JOIN MODAL -->
 
@@ -259,7 +278,8 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
   <div class="mode-card mc-molotow" id="mc-m" onclick="selMode('molotow')"><div class="mc-check"></div><div class="mc-top"><div class="mc-icon">💣</div><div><div class="mc-title">Molotow</div><div class="mc-desc">Jeder für sich · Wenig Pkt = gut</div></div></div><div class="mc-tags"><span class="mc-tag t-red">Einzelspieler</span><span class="mc-tag">Zehner-System</span><span class="mc-tag">Hand-/Tischweise</span></div></div>
   <div class="tname-field"><label>Turnier-Name</label><input type="text" id="tname" placeholder="z.B. Jass-Abend Freitag" maxlength="40" value="Jass-Turnier"></div>
   <h2>👥 Spieler <span id="plimit">(min. 4, max. 10)</span></h2>
-  <div class="pi-row"><input type="text" id="ni" placeholder="Name eingeben..." maxlength="15" onkeydown="if(event.key==='Enter')addP()"><button onclick="addP()">+</button></div>
+  <div id="reg-users" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+  <div class="pi-row"><input type="text" id="ni" placeholder="Gastname eingeben..." maxlength="15" onkeydown="if(event.key==='Enter')addP()"><button onclick="addP()">+</button></div>
   <div class="pl" id="plist"></div>
   <div class="pcount" id="pcnt"></div>
   <div id="rsec" style="display:none">
@@ -395,7 +415,7 @@ async function delTournament(tid,name){
   const{error}=await sb.from('jass_tournaments').delete().eq('id',tid);if(error)throw error;toast('Gelöscht');loadMyTournaments();}catch(e){toast('⚠️ '+e.message)}
 }
 
-function showSetup(){sp=curUser?[curUser.display_name]:[];selR=0;rMode='';gameMode='schieber';document.getElementById('tname').value='Jass-Turnier';selMode('schieber');rSP();uRO();showScreen('SS')}
+async function showSetup(){sp=curUser?[curUser.display_name]:[];spUserMap=curUser?{0:curUser.id}:{};selR=0;rMode='';gameMode='schieber';document.getElementById('tname').value='Jass-Turnier';selMode('schieber');await loadAllUsers();rSP();uRO();renderRegUsers();showScreen('SS')}
 function backToLobby(){showScreen('LOBBY');loadMyTournaments()}
 function openJoinModal(){document.getElementById('joinModal').classList.add('open');document.getElementById('j-code').value='';document.getElementById('j-err').textContent='';document.getElementById('j-code').focus()}
 function closeJoinModal(){document.getElementById('joinModal').classList.remove('open')}
@@ -412,6 +432,13 @@ async function joinByCode(){
 
 // ══════ SETUP ══════
 let sp=[],selR=0,rMode='';
+let allUsers=[];  // cached registered users
+let spUserMap={};  // index -> user_id mapping
+
+async function loadAllUsers(){
+  const{data}=await sb.from('jass_users').select('id,display_name,username');
+  allUsers=data||[];
+}
 
 function selMode(m){
   gameMode=m;
@@ -423,9 +450,40 @@ function selMode(m){
   uRO();
 }
 
-function addP(){const i=document.getElementById('ni'),n=i.value.trim();if(!n||sp.some(x=>x.toLowerCase()===n.toLowerCase())||sp.length>=10){i.value='';return}sp.push(n);i.value='';i.focus();rSP();uRO()}
-function remP(i){sp.splice(i,1);rSP();uRO()}
-function rSP(){document.getElementById('plist').innerHTML=sp.map((n,i)=>'<span class="chip">'+n+'<span class="x" onclick="remP('+i+')">✕</span></span>').join('');const mn=gameMode==='molotow'?3:4;document.getElementById('pcnt').textContent=sp.length+' Spieler'+(sp.length<mn?' (noch '+(mn-sp.length)+' nötig)':'')}
+function renderRegUsers(){
+  const el=document.getElementById('reg-users');
+  if(!allUsers.length){el.innerHTML='';return}
+  const added=sp.map(n=>n.toLowerCase());
+  let h='<div style="font-size:10px;color:#8b949e;width:100%;margin-bottom:2px">Registrierte Spieler:</div>';
+  allUsers.forEach(u=>{
+    const isAdded=added.includes(u.display_name.toLowerCase());
+    h+='<div style="display:inline-flex;align-items:center;gap:4px;background:'+(isAdded?'rgba(63,185,80,.1)':'#161b22')+';border:1px solid '+(isAdded?'#3fb950':'#30363d')+';border-radius:16px;padding:4px 10px;font-size:12px;font-weight:500;cursor:'+(isAdded?'default':'pointer')+';color:'+(isAdded?'#3fb950':'#e6edf3')+'" '+(isAdded?'':'onclick="addRegUser(\''+u.id+'\',\''+esc(u.display_name)+'\')"')+'>'+(isAdded?'✓ ':'')+esc(u.display_name)+'</div>';
+  });
+  el.innerHTML=h;
+}
+
+function addRegUser(uid,name){
+  if(sp.some(x=>x.toLowerCase()===name.toLowerCase())||sp.length>=10)return;
+  sp.push(name);spUserMap[sp.length-1]=uid;
+  rSP();uRO();renderRegUsers();
+}
+
+function addP(){const i=document.getElementById('ni'),n=i.value.trim();if(!n||sp.some(x=>x.toLowerCase()===n.toLowerCase())||sp.length>=10){i.value='';return}sp.push(n);i.value='';i.focus();
+  // Check if name matches a registered user
+  const match=allUsers.find(u=>u.display_name.toLowerCase()===n.toLowerCase());
+  if(match)spUserMap[sp.length-1]=match.id;
+  rSP();uRO();renderRegUsers()}
+
+function remP(i){sp.splice(i,1);
+  // Rebuild user map with shifted indices
+  const nm={};Object.entries(spUserMap).forEach(([k,v])=>{const ki=parseInt(k);if(ki<i)nm[ki]=v;else if(ki>i)nm[ki-1]=v});
+  spUserMap=nm;
+  rSP();uRO();renderRegUsers()}
+
+function rSP(){document.getElementById('plist').innerHTML=sp.map((n,i)=>{
+  const isLinked=!!spUserMap[i];
+  return '<span class="chip">'+(isLinked?'<span style="color:#3fb950;font-size:10px;margin-right:2px">●</span>':'')+n+'<span class="x" onclick="remP('+i+')">✕</span></span>'}).join('');
+  const mn=gameMode==='molotow'?3:4;document.getElementById('pcnt').textContent=sp.length+' Spieler'+(sp.length<mn?' (noch '+(mn-sp.length)+' nötig)':'')}
 
 function maxC(n){if(gameMode==='molotow')return 99;const t=[];for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)t.push([i,j]);let c=0;for(let a=0;a<t.length;a++)for(let b=a+1;b<t.length;b++){if(new Set([...t[a],...t[b]]).size===4)c++}return c}
 
@@ -479,7 +537,7 @@ async function startT(){
   const code=genCode(),tname=document.getElementById('tname').value.trim()||'Jass-Turnier';
   const rounds=gameMode==='schieber'?genSched(sp,selR):[];
   try{
-    const{data:t,error}=await sb.from('jass_tournaments').insert({code,name:tname,created_by:curUser.id,players:sp,rounds,nr_rounds:selR,game_type:gameMode}).select().single();
+    const{data:t,error}=await sb.from('jass_tournaments').insert({code,name:tname,created_by:curUser.id,players:sp,rounds,nr_rounds:selR,game_type:gameMode,player_user_ids:spUserMap}).select().single();
     if(error)throw error;
     await sb.from('jass_participants').insert({tournament_id:t.id,user_id:curUser.id,player_name:curUser.display_name});
     toast('Code: '+code);openTournament(t.id);
@@ -788,6 +846,217 @@ function leaveTournament(){if(realtimeSub){sb.removeChannel(realtimeSub);realtim
 // ══════ UTILS ══════
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2500)}
+
+// ══════ GLOBAL STATS ENGINE ══════
+async function loadAllTournaments(){
+  const{data}=await sb.from('jass_tournaments').select('*').order('created_at',{ascending:false});
+  return data||[];
+}
+
+async function loadAllScores(tids){
+  if(!tids.length)return[];
+  const{data}=await sb.from('jass_scores').select('*').in('tournament_id',tids);
+  return data||[];
+}
+
+function calcGlobalStats(tours,scores){
+  // Build per-user stats across all tournaments
+  const us={};// uid -> {name,schieber:{wins,losses,draws,games,pts_for,pts_against},molotow:{games,total_pts,matches,zeros,best_round,worst_round}}
+  tours.forEach(t=>{
+    const pmap=t.player_user_ids||{};
+    const gt=t.game_type||'schieber';
+    const tScores=scores.filter(s=>s.tournament_id===t.id);
+    // Init users
+    Object.entries(pmap).forEach(([idx,uid])=>{
+      if(!us[uid])us[uid]={name:t.players[parseInt(idx)]||'?',uid,sTournaments:0,mTournaments:0,sWins:0,sLosses:0,sDraws:0,sGames:0,sPtsFor:0,sPtsAgainst:0,mRounds:0,mTotalPts:0,mMatches:0,mZeros:0,mBest:Infinity,mWorst:-Infinity,sWeisen:0,sMatchCount:0};
+      // Update name to latest
+      us[uid].name=t.players[parseInt(idx)]||us[uid].name;
+    });
+    if(gt==='schieber'){
+      Object.entries(pmap).forEach(([idx,uid])=>{us[uid].sTournaments++});
+      // Calc schieber game results
+      const D2={};tScores.forEach(s=>{D2[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,w:s.weisen||{}}});
+      for(let gi=0;gi<t.nr_rounds;gi++){
+        const g=t.rounds[gi];if(!g)continue;
+        let s1=0,s2=0,ok=true;
+        for(let ri=0;ri<4;ri++){const r=D2[gi+'-'+ri];if(!r||r.s1===null){ok=false;continue}s1+=r.s1||0;s2+=r.s2||0;
+          // Weisen
+          let w1=0,w2=0;if(r.w){Object.entries(r.w).forEach(([k,c])=>{const p=k.split('-'),wid=p[0],tm=parseInt(p[1]),wt=WS.find(x=>x.id===wid);if(wt&&c){if(tm===1)w1+=wt.p*c;else w2+=wt.p*c}})}
+          s1+=w1;s2+=w2;
+        }
+        if(!ok)continue;
+        const win=s1>s2?1:s2>s1?2:0;
+        g.t1.forEach(pi=>{const uid=pmap[pi];if(!uid)return;us[uid].sGames++;us[uid].sPtsFor+=s1;us[uid].sPtsAgainst+=s2;if(win===1)us[uid].sWins++;else if(win===2)us[uid].sLosses++;else us[uid].sDraws++});
+        g.t2.forEach(pi=>{const uid=pmap[pi];if(!uid)return;us[uid].sGames++;us[uid].sPtsFor+=s2;us[uid].sPtsAgainst+=s1;if(win===2)us[uid].sWins++;else if(win===1)us[uid].sLosses++;else us[uid].sDraws++});
+      }
+    }else if(gt==='molotow'){
+      Object.entries(pmap).forEach(([idx,uid])=>{us[uid].mTournaments++});
+      for(let ri=0;ri<t.nr_rounds;ri++){
+        const sc=tScores.find(s=>s.game_index===ri&&s.round_index===0);
+        if(!sc||!sc.molotow_data)continue;
+        const data=Array.isArray(sc.molotow_data)?sc.molotow_data:JSON.parse(sc.molotow_data);
+        if(!data.every(p=>p.cards!==null))continue;
+        data.forEach((p,pi)=>{
+          const uid=pmap[String(pi)];if(!uid)return;
+          const hwS=moloWeisSum(p.hweise);const twS=moloWeisSum(p.tweise);
+          let pts;if(p.match)pts=-15;else if(p.zero)pts=-1;else pts=Math.round((p.cards-hwS+twS)/10);
+          us[uid].mRounds++;us[uid].mTotalPts+=pts;
+          if(p.match)us[uid].mMatches++;if(p.zero)us[uid].mZeros++;
+          if(pts<us[uid].mBest)us[uid].mBest=pts;if(pts>us[uid].mWorst)us[uid].mWorst=pts;
+        });
+      }
+    }
+  });
+  return us;
+}
+
+// ══════ PROFILE ══════
+async function showProfile(){
+  document.getElementById('profileModal').classList.add('open');
+  const el=document.getElementById('profile-content');el.innerHTML='<div class="ldr">Lade...</div>';
+  const tours=await loadAllTournaments();
+  const tids=tours.map(t=>t.id);
+  const scores=await loadAllScores(tids);
+  const us=calcGlobalStats(tours,scores);
+  const me=us[curUser.id];
+  if(!me){el.innerHTML='<div class="empty">Noch keine Turnier-Daten.<br>Erstelle ein Turnier und verknüpfe dich als Spieler!</div>';return}
+  let h='<div style="text-align:center;margin-bottom:16px"><div style="font-size:24px;font-weight:700;color:#e7af3b">'+esc(me.name)+'</div><div style="font-size:11px;color:#8b949e">'+me.sTournaments+' Schieber · '+me.mTournaments+' Molotow Turniere</div></div>';
+  if(me.sGames){
+    const avg=me.sGames?Math.round(me.sPtsFor/me.sGames):0;const diff=me.sPtsFor-me.sPtsAgainst;
+    h+='<div class="sc"><h3>🃏 Schieber Gesamt</h3>';
+    h+='<div class="sr"><span>Spiele</span><span class="v">'+me.sGames+'</span></div>';
+    h+='<div class="sr"><span>Siege / Unentschieden / Niederlagen</span><span class="v">'+me.sWins+' / '+me.sDraws+' / '+me.sLosses+'</span></div>';
+    h+='<div class="sr"><span>Siegquote</span><span class="v">'+Math.round(me.sWins/me.sGames*100)+'%</span></div>';
+    h+='<div class="sr"><span>Ø Punkte</span><span class="v">'+avg+'</span></div>';
+    h+='<div class="sr"><span>Differenz</span><span class="v" style="color:'+(diff>=0?'#3fb950':'#f85149')+'">'+(diff>=0?'+':'')+diff+'</span></div>';
+    h+='</div>';
+  }
+  if(me.mRounds){
+    const avg=Math.round(me.mTotalPts/me.mRounds*10)/10;
+    h+='<div class="sc molo"><h3>💣 Molotow Gesamt</h3>';
+    h+='<div class="sr"><span>Runden</span><span class="v">'+me.mRounds+'</span></div>';
+    h+='<div class="sr"><span>Total Punkte</span><span class="v" style="color:'+(me.mTotalPts<=0?'#3fb950':'#f85149')+'">'+me.mTotalPts+'</span></div>';
+    h+='<div class="sr"><span>Ø pro Runde</span><span class="v">'+avg+'</span></div>';
+    h+='<div class="sr"><span>Matches / 0 Stiche</span><span class="v">'+me.mMatches+'x 💥 / '+me.mZeros+'x 🎯</span></div>';
+    if(me.mBest!==Infinity)h+='<div class="sr"><span>Beste Runde</span><span class="v" style="color:#3fb950">'+me.mBest+'</span></div>';
+    if(me.mWorst!==-Infinity)h+='<div class="sr"><span>Schlechteste Runde</span><span class="v" style="color:#f85149">'+me.mWorst+'</span></div>';
+    h+='</div>';
+  }
+  // H2H links
+  const others=Object.values(us).filter(u=>u.uid!==curUser.id);
+  if(others.length){
+    h+='<div class="sc"><h3>⚔️ Head-to-Head</h3>';
+    others.forEach(o=>{h+='<div style="padding:4px 0;cursor:pointer;color:#58a6ff;font-size:12px" onclick="showH2H(\''+o.uid+'\',\''+esc(o.name)+'\')">vs '+esc(o.name)+' →</div>'});
+    h+='</div>';
+  }
+  el.innerHTML=h;
+}
+
+// ══════ EWIGE RANGLISTE ══════
+async function showEwige(){
+  document.getElementById('ewigeModal').classList.add('open');
+  const el=document.getElementById('ewige-content');el.innerHTML='<div class="ldr">Lade...</div>';
+  const tours=await loadAllTournaments();
+  const scores=await loadAllScores(tours.map(t=>t.id));
+  const us=calcGlobalStats(tours,scores);
+  const arr=Object.values(us);
+  if(!arr.length){el.innerHTML='<div class="empty">Noch keine verknüpften Spieler.</div>';return}
+  // Schieber ranking by win%
+  const sPlayers=arr.filter(u=>u.sGames>0).sort((a,b)=>{const aw=a.sWins/a.sGames,bw=b.sWins/b.sGames;return bw!==aw?bw-aw:(b.sPtsFor-b.sPtsAgainst)-(a.sPtsFor-a.sPtsAgainst)});
+  // Molotow ranking by avg pts per round (lower = better)
+  const mPlayers=arr.filter(u=>u.mRounds>0).sort((a,b)=>(a.mTotalPts/a.mRounds)-(b.mTotalPts/b.mRounds));
+  let h='';
+  if(sPlayers.length){
+    h+='<div style="font-size:13px;font-weight:700;color:#e7af3b;margin:12px 0 8px">🃏 Schieber</div>';
+    sPlayers.forEach((s,i)=>{const c=i===0?'r1':i===1?'r2':i===2?'r3':'rother';const pct=Math.round(s.sWins/s.sGames*100);
+      h+='<div class="rr"><div class="rpos '+c+'">'+(i+1)+'</div><div class="rnm">'+(i===0?'👑 ':'')+s.name+'</div><div class="rst"><span class="pp">'+pct+'%</span>'+s.sWins+'S '+s.sDraws+'U '+s.sLosses+'N · '+s.sGames+' Spiele</div></div>'});
+  }
+  if(mPlayers.length){
+    h+='<div style="font-size:13px;font-weight:700;color:#f85149;margin:16px 0 8px">💣 Molotow</div>';
+    mPlayers.forEach((s,i)=>{const c=i===0?'r1':i===1?'r2':i===2?'r3':'rother';const avg=Math.round(s.mTotalPts/s.mRounds*10)/10;
+      h+='<div class="rr"><div class="rpos '+c+'">'+(i+1)+'</div><div class="rnm">'+(i===0?'👑 ':'')+s.name+'</div><div class="rst"><span class="pp" style="color:'+(s.mTotalPts<=0?'#3fb950':'#f85149')+'">Ø '+avg+'</span>'+s.mRounds+' Runden · '+s.mMatches+'x💥</div></div>'});
+  }
+  if(!h)h='<div class="empty">Noch keine Daten.</div>';
+  el.innerHTML=h;
+}
+
+// ══════ HEAD-TO-HEAD ══════
+async function showH2H(opponentUid,opponentName){
+  document.getElementById('h2hModal').classList.add('open');
+  const el=document.getElementById('h2h-content');el.innerHTML='<div class="ldr">Lade...</div>';
+  const tours=await loadAllTournaments();
+  const scores=await loadAllScores(tours.map(t=>t.id));
+  const myUid=curUser.id;
+  let sameTeamW=0,sameTeamL=0,sameTeamD=0,sameTeamG=0;
+  let vsW=0,vsL=0,vsD=0,vsG=0;
+  let moloMeTotal=0,moloOppTotal=0,moloRounds=0;
+
+  tours.forEach(t=>{
+    const pmap=t.player_user_ids||{};
+    const myIdx=Object.entries(pmap).find(([k,v])=>v===myUid);
+    const oppIdx=Object.entries(pmap).find(([k,v])=>v===opponentUid);
+    if(!myIdx||!oppIdx)return;
+    const mi=parseInt(myIdx[0]),oi=parseInt(oppIdx[0]);
+    const gt=t.game_type||'schieber';
+    const tScores=scores.filter(s=>s.tournament_id===t.id);
+
+    if(gt==='schieber'){
+      const D2={};tScores.forEach(s=>{D2[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,w:s.weisen||{}}});
+      for(let gi=0;gi<t.nr_rounds;gi++){
+        const g=t.rounds[gi];if(!g)continue;
+        const t1Has=g.t1.includes(mi),t2Has=g.t2.includes(mi);
+        const oT1=g.t1.includes(oi),oT2=g.t2.includes(oi);
+        if(!t1Has&&!t2Has)continue;if(!oT1&&!oT2)continue;
+        let s1=0,s2=0,ok=true;
+        for(let ri=0;ri<4;ri++){const r=D2[gi+'-'+ri];if(!r||r.s1===null){ok=false;continue}s1+=r.s1||0;s2+=r.s2||0;
+          let w1=0,w2=0;if(r.w){Object.entries(r.w).forEach(([k,c])=>{const p=k.split('-'),wid=p[0],tm=parseInt(p[1]),wt=WS.find(x=>x.id===wid);if(wt&&c){if(tm===1)w1+=wt.p*c;else w2+=wt.p*c}})}s1+=w1;s2+=w2}
+        if(!ok)continue;
+        const sameTeam=(t1Has&&oT1)||(t2Has&&oT2);
+        if(sameTeam){
+          sameTeamG++;const myS=t1Has?s1:s2,oppS=t1Has?s2:s1;
+          if(myS>oppS)sameTeamW++;else if(myS<oppS)sameTeamL++;else sameTeamD++;
+        }else{
+          vsG++;const myS=t1Has?s1:s2,oppS=t1Has?s2:s1;
+          if(myS>oppS)vsW++;else if(myS<oppS)vsL++;else vsD++;
+        }
+      }
+    }else if(gt==='molotow'){
+      for(let ri=0;ri<t.nr_rounds;ri++){
+        const sc=tScores.find(s=>s.game_index===ri&&s.round_index===0);
+        if(!sc||!sc.molotow_data)continue;
+        const data=Array.isArray(sc.molotow_data)?sc.molotow_data:JSON.parse(sc.molotow_data);
+        if(!data.every(p=>p.cards!==null))continue;
+        const myP=data[mi],oppP=data[oi];if(!myP||!oppP)continue;
+        const myPts=myP.match?-15:myP.zero?-1:Math.round((myP.cards-moloWeisSum(myP.hweise)+moloWeisSum(myP.tweise))/10);
+        const oppPts=oppP.match?-15:oppP.zero?-1:Math.round((oppP.cards-moloWeisSum(oppP.hweise)+moloWeisSum(oppP.tweise))/10);
+        moloMeTotal+=myPts;moloOppTotal+=oppPts;moloRounds++;
+      }
+    }
+  });
+
+  let h='<div style="text-align:center;margin-bottom:16px;font-size:18px;font-weight:700"><span style="color:#e7af3b">'+esc(curUser.display_name)+'</span> <span style="color:#484f58">vs</span> <span style="color:#58a6ff">'+esc(opponentName)+'</span></div>';
+  if(vsG||sameTeamG){
+    h+='<div class="sc"><h3>🃏 Schieber</h3>';
+    if(vsG){h+='<div style="font-size:11px;color:#8b949e;margin-bottom:4px">Gegeneinander ('+vsG+' Spiele)</div>';
+      h+='<div class="sr"><span>Siege</span><span class="v" style="color:#3fb950">'+vsW+'</span></div>';
+      h+='<div class="sr"><span>Niederlagen</span><span class="v" style="color:#f85149">'+vsL+'</span></div>';
+      h+='<div class="sr"><span>Unentschieden</span><span class="v">'+vsD+'</span></div>'}
+    if(sameTeamG){h+='<div style="font-size:11px;color:#8b949e;margin:8px 0 4px">Im gleichen Team ('+sameTeamG+' Spiele)</div>';
+      h+='<div class="sr"><span>Siege zusammen</span><span class="v" style="color:#3fb950">'+sameTeamW+'</span></div>';
+      h+='<div class="sr"><span>Niederlagen zusammen</span><span class="v" style="color:#f85149">'+sameTeamL+'</span></div>'}
+    h+='</div>';
+  }
+  if(moloRounds){
+    const myAvg=Math.round(moloMeTotal/moloRounds*10)/10,oppAvg=Math.round(moloOppTotal/moloRounds*10)/10;
+    h+='<div class="sc molo"><h3>💣 Molotow ('+moloRounds+' gemeinsame Runden)</h3>';
+    h+='<div class="sr"><span>'+esc(curUser.display_name)+' Total</span><span class="v" style="color:'+(moloMeTotal<=0?'#3fb950':'#f85149')+'">'+moloMeTotal+' (Ø '+myAvg+')</span></div>';
+    h+='<div class="sr"><span>'+esc(opponentName)+' Total</span><span class="v" style="color:'+(moloOppTotal<=0?'#3fb950':'#f85149')+'">'+moloOppTotal+' (Ø '+oppAvg+')</span></div>';
+    h+='<div class="sr"><span>Besser</span><span class="v" style="color:#e7af3b">'+(moloMeTotal<moloOppTotal?curUser.display_name:moloOppTotal<moloMeTotal?opponentName:'Gleichstand')+'</span></div>';
+    h+='</div>';
+  }
+  if(!vsG&&!sameTeamG&&!moloRounds)h+='<div class="empty">Noch keine gemeinsamen Spiele.</div>';
+  el.innerHTML=h;
+}
 
 // ══════ INIT ══════
 (async()=>{const{data:{session}}=await sb.auth.getSession();if(session){await loadUser()}else{showScreen('AUTH')}})();
