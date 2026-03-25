@@ -298,7 +298,10 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
   <div class="hero" id="app-hero">
     <h1 id="ah-title">🃏 Jass-Turnier</h1>
     <div class="sub" id="asub"></div>
-    <div class="code-display" id="acode" onclick="copyCode()"></div>
+    <div style="display:flex;justify-content:center;gap:8px;margin-top:6px">
+      <div class="code-display" id="acode" onclick="copyCode()"></div>
+      <div class="code-display" style="cursor:pointer" onclick="showPlayerMgmt()">👥 Spieler</div>
+    </div>
     <div class="pbar"><div class="pfill" id="pf"></div></div>
     <div class="ptext"><span class="sync-dot sync-off" id="sync-dot"></span><span id="pc">0</span>/<span id="pt">0</span> <span id="punit">Spiele</span></div>
   </div>
@@ -311,6 +314,10 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
   <div class="pnl" id="p-rank"></div>
   <div class="pnl" id="p-stats"></div>
 </div>
+
+<!-- PLAYER MGMT MODAL -->
+
+<div class="modal-bg" id="pmModal"><div class="modal" style="max-height:80vh;overflow-y:auto"><button class="modal-close" onclick="document.getElementById('pmModal').classList.remove('open')">✕</button><h3>👥 Spieler verknüpfen</h3><div id="pm-content"></div></div></div>
 
 <script>
 const SB_URL='https://nauhauijxaohroawkgol.supabase.co';
@@ -549,7 +556,7 @@ async function openTournament(tid){
   curTournament=tid;
   const{data:t}=await sb.from('jass_tournaments').select('*').eq('id',tid).single();
   if(!t){alert('Turnier nicht gefunden');return}
-  TN={players:t.players,rounds:t.rounds||[],nr:t.nr_rounds,code:t.code,id:t.id,status:t.status,name:t.name||'Jass-Turnier',type:t.game_type||'schieber'};
+  TN={players:t.players,rounds:t.rounds||[],nr:t.nr_rounds,code:t.code,id:t.id,status:t.status,name:t.name||'Jass-Turnier',type:t.game_type||'schieber',playerUserIds:t.player_user_ids||{}};
   D={};
   const{data:scores}=await sb.from('jass_scores').select('*').eq('tournament_id',tid);
   if(scores)scores.forEach(s=>{D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{},md:s.molotow_data||null}});
@@ -588,6 +595,57 @@ function showApp(){
 }
 function copyCode(){navigator.clipboard.writeText(TN.code).then(()=>toast('Code kopiert: '+TN.code)).catch(()=>{})}
 async function renameTournament(){const n=prompt('Turnier-Name:',TN.name);if(!n||n.trim()===TN.name)return;const{error}=await sb.from('jass_tournaments').update({name:n.trim()}).eq('id',TN.id);if(error){toast('⚠️ '+error.message);return}TN.name=n.trim();document.getElementById('ah-title').innerHTML=(TN.type==='molotow'?'💣 ':'🃏 ')+esc(TN.name)+' <span class="edit-icon" onclick="renameTournament()">✏️</span>';toast('Name geändert!')}
+
+// ══════ PLAYER MANAGEMENT ══════
+async function showPlayerMgmt(){
+  await loadAllUsers();
+  document.getElementById('pmModal').classList.add('open');
+  renderPM();
+}
+
+function renderPM(){
+  const el=document.getElementById('pm-content');
+  const pmap=TN.playerUserIds||{};
+  let h='<div style="font-size:11px;color:#8b949e;margin-bottom:12px">Verknüpfe Spieler mit registrierten Accounts für die Gesamtstatistik.</div>';
+  TN.players.forEach((name,i)=>{
+    const uid=pmap[String(i)];
+    const linked=uid?allUsers.find(u=>u.id===uid):null;
+    h+='<div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 12px;margin-bottom:8px">';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-weight:700;font-size:14px">'+esc(name)+'</span>';
+    if(linked){h+='<span style="font-size:11px;color:#3fb950">● '+esc(linked.display_name)+'</span>'}
+    else{h+='<span style="font-size:11px;color:#484f58">Nicht verknüpft</span>'}
+    h+='</div><div style="display:flex;flex-wrap:wrap;gap:4px">';
+    allUsers.forEach((u,ui)=>{
+      const isSel=uid===u.id;
+      const usedBy=Object.entries(pmap).find(([k,v])=>v===u.id&&k!==String(i));
+      if(usedBy)return;
+      h+='<div style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid '+(isSel?'#3fb950':'#30363d')+';background:'+(isSel?'rgba(63,185,80,.1)':'#161b22')+';color:'+(isSel?'#3fb950':'#8b949e')+'" onclick="pmLink('+i+','+ui+')">'+(isSel?'✓ ':'')+esc(u.display_name)+'</div>';
+    });
+    if(linked){h+='<div style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid #f85149;background:rgba(248,81,73,.08);color:#f85149" onclick="pmUnlink('+i+')">✕ Trennen</div>'}
+    h+='</div></div>';
+  });
+  el.innerHTML=h;
+}
+
+function pmLink(playerIdx,userIdx){
+  const u=allUsers[userIdx];if(!u)return;
+  const pmap=TN.playerUserIds||{};
+  // Toggle: if already linked to this user, unlink
+  if(pmap[String(playerIdx)]===u.id){delete pmap[String(playerIdx)]}
+  else{pmap[String(playerIdx)]=u.id}
+  linkPlayerSave(pmap);
+}
+function pmUnlink(playerIdx){
+  const pmap=TN.playerUserIds||{};
+  delete pmap[String(playerIdx)];
+  linkPlayerSave(pmap);
+}
+async function linkPlayerSave(pmap){
+  const{error}=await sb.from('jass_tournaments').update({player_user_ids:pmap}).eq('id',TN.id);
+  if(error){toast('⚠️ '+error.message);return}
+  TN.playerUserIds=pmap;
+  toast('Gespeichert!');renderPM();
+}
 
 // ══════ GAME LOGIC (shared) ══════
 const NRM=157,MTC=207;
