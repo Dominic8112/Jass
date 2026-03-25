@@ -160,6 +160,7 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
 .sync-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
 .sync-on{background:#3fb950}.sync-off{background:#f85149}
 .ldr{text-align:center;padding:40px;color:#8b949e;font-size:13px}
+.edit-icon{font-size:14px;cursor:pointer;opacity:.5;margin-left:4px;vertical-align:middle}.edit-icon:hover{opacity:1}
 </style>
 </head>
 <body style="background:#0d1117;color:#e6edf3">
@@ -390,9 +391,22 @@ async function loadMyTournaments(){
   let h='';
   tours.forEach(t=>{
     const n=t.players?t.players.length:0;
-    h+='<div class="tcard" onclick="openTournament(\''+t.id+'\')"><div class="tc-top"><span class="tc-name">'+esc(t.name||'Jass-Turnier')+'</span><span class="tc-code">'+t.code+'</span></div><div class="tc-info">'+n+' Spieler · '+t.nr_rounds+' Spiele</div><div class="tc-status '+(t.status==='active'?'tc-active':'tc-finished')+'">'+(t.status==='active'?'🟢 Aktiv':'✅ Beendet')+'</div></div>';
+    h+='<div class="tcard"><div class="tc-top" onclick="openTournament(\''+t.id+'\')"><span class="tc-name">'+esc(t.name||'Jass-Turnier')+'</span><span class="tc-code">'+t.code+'</span></div><div class="tc-info" onclick="openTournament(\''+t.id+'\')">'+n+' Spieler · '+t.nr_rounds+' Spiele</div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><span class="tc-status '+(t.status==='active'?'tc-active':'tc-finished')+'">'+(t.status==='active'?'🟢 Aktiv':'✅ Beendet')+'</span><span style="font-size:11px;color:#484f58;cursor:pointer" onclick="event.stopPropagation();delTournament(\''+t.id+'\',\''+esc(t.name||'Jass-Turnier')+'\')">🗑️ Löschen</span></div></div>';
   });
   document.getElementById('l-list').innerHTML=h;
+}
+
+async function delTournament(tid,name){
+  if(!confirm('Turnier "'+name+'" wirklich löschen?\n\nAlle Scores und History gehen verloren!'))return;
+  try{
+    await sb.from('jass_score_history').delete().eq('tournament_id',tid);
+    await sb.from('jass_scores').delete().eq('tournament_id',tid);
+    await sb.from('jass_participants').delete().eq('tournament_id',tid);
+    const{error}=await sb.from('jass_tournaments').delete().eq('id',tid);
+    if(error)throw error;
+    toast('Turnier gelöscht');
+    loadMyTournaments();
+  }catch(e){toast('⚠️ Fehler: '+e.message)}
 }
 
 function showSetup(){sp=curUser?[curUser.display_name]:[];selR=0;rMode='';document.getElementById('tname').value='Jass-Turnier';rSP();uRO();showScreen('SS')}
@@ -507,13 +521,23 @@ function subscribeRT(tid){
 // ══════ SHOW APP ══════
 function showApp(){
   showScreen('AS');
-  document.getElementById('ah-title').textContent='🃏 '+TN.name;
+  document.getElementById('ah-title').innerHTML='🃏 '+esc(TN.name)+' <span class="edit-icon" onclick="renameTournament()">✏️</span>';
   document.getElementById('asub').textContent=TN.players.length+' Spieler · '+TN.nr+' Spiele';
   document.getElementById('acode').textContent='📋 Code: '+TN.code+' (tippen zum Kopieren)';
   document.getElementById('pt').textContent=TN.nr;
   renderG();uPr();
 }
 function copyCode(){navigator.clipboard.writeText(TN.code).then(()=>toast('Code kopiert: '+TN.code)).catch(()=>{})}
+
+async function renameTournament(){
+  const newName=prompt('Turnier-Name:',TN.name);
+  if(!newName||newName.trim()===TN.name)return;
+  const{error}=await sb.from('jass_tournaments').update({name:newName.trim()}).eq('id',TN.id);
+  if(error){toast('⚠️ Fehler: '+error.message);return}
+  TN.name=newName.trim();
+  document.getElementById('ah-title').innerHTML='🃏 '+esc(TN.name)+' <span class="edit-icon" onclick="renameTournament()">✏️</span>';
+  toast('Name geändert!');
+}
 
 // ══════ GAME LOGIC ══════
 const NRM=157,MTC=207;
