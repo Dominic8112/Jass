@@ -282,6 +282,17 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
   <h2>🎮 Spielmodus</h2>
   <div class="mode-card mc-schieber sel" id="mc-s" onclick="selMode('schieber')"><div class="mc-check">✓</div><div class="mc-top"><div class="mc-icon">🃏</div><div><div class="mc-title">Schieber</div><div class="mc-desc">2er-Teams · 4 Ansagen · 157 Pkt</div></div></div><div class="mc-tags"><span class="mc-tag t-gold">Teams</span><span class="mc-tag">Weisen</span><span class="mc-tag">Match 207</span></div></div>
   <div class="mode-card mc-molotow" id="mc-m" onclick="selMode('molotow')"><div class="mc-check"></div><div class="mc-top"><div class="mc-icon">💣</div><div><div class="mc-title">Molotow</div><div class="mc-desc">Jeder für sich · Wenig Pkt = gut</div></div></div><div class="mc-tags"><span class="mc-tag t-red">Einzelspieler</span><span class="mc-tag">Zehner-System</span><span class="mc-tag">Hand-/Tischweise</span></div></div>
+  <!-- Team Type (nur bei Schieber) -->
+  <div id="teamTypeSec">
+    <h2>🤝 Team-Modus</h2>
+    <div class="ropt sel" id="tt-turnier" onclick="selTeamType('turnier')"><div class="dot"></div><div><div class="rt">🔄 Turnier</div><div class="rd">Wechselnde Teams · 4–10 Spieler</div></div></div>
+    <div class="ropt" id="tt-fix" onclick="selTeamType('fix')"><div class="dot"></div><div><div class="rt">🤝 Fixe Teams</div><div class="rd">2 feste Teams · 4 Spieler</div></div></div>
+  </div>
+  <!-- Team-Zuweisung (nur bei fix) -->
+  <div id="teamAssignSec" style="display:none">
+    <h2>⚔️ Teams zuteilen</h2>
+    <div id="teamAssign"></div>
+  </div>
   <div class="tname-field"><label>Turnier-Name</label><input type="text" id="tname" placeholder="z.B. Jass-Abend Freitag" maxlength="40" value="Jass-Turnier"></div>
   <h2>👥 Spieler <span id="plimit">(min. 4, max. 10)</span></h2>
   <div id="reg-users" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
@@ -428,7 +439,7 @@ async function delTournament(tid,name){
   const{error}=await sb.from('jass_tournaments').delete().eq('id',tid);if(error)throw error;toast('Gelöscht');loadMyTournaments();}catch(e){toast('⚠️ '+e.message)}
 }
 
-async function showSetup(){sp=curUser?[curUser.display_name]:[];spUserMap=curUser?{0:curUser.id}:{};selR=0;rMode='';gameMode='schieber';document.getElementById('tname').value='Jass-Turnier';selMode('schieber');await loadAllUsers();rSP();uRO();renderRegUsers();showScreen('SS')}
+async function showSetup(){sp=curUser?[curUser.display_name]:[];spUserMap=curUser?{0:curUser.id}:{};selR=0;rMode='';gameMode='schieber';teamType='turnier';document.getElementById('tname').value='Jass-Turnier';selMode('schieber');selTeamType('turnier');await loadAllUsers();rSP();uRO();renderRegUsers();showScreen('SS')}
 function backToLobby(){showScreen('LOBBY');loadMyTournaments()}
 function openJoinModal(){document.getElementById('joinModal').classList.add('open');document.getElementById('j-code').value='';document.getElementById('j-err').textContent='';document.getElementById('j-code').focus()}
 function closeJoinModal(){document.getElementById('joinModal').classList.remove('open')}
@@ -445,8 +456,10 @@ async function joinByCode(){
 
 // ══════ SETUP ══════
 let sp=[],selR=0,rMode='';
-let allUsers=[];  // cached registered users
-let spUserMap={};  // index -> user_id mapping
+let allUsers=[];
+let spUserMap={};
+let teamType='turnier'; // 'turnier' or 'fix'
+let fixTeams=[[],[]]; // for fix mode: [[idx,idx],[idx,idx]]
 
 async function loadAllUsers(){
   const{data}=await sb.from('jass_users').select('id,display_name,username');
@@ -459,8 +472,54 @@ function selMode(m){
   document.getElementById('mc-m').className='mode-card mc-molotow'+(m==='molotow'?' sel-m':'');
   document.getElementById('mc-s').querySelector('.mc-check').textContent=m==='schieber'?'✓':'';
   document.getElementById('mc-m').querySelector('.mc-check').textContent=m==='molotow'?'✓':'';
-  document.getElementById('plimit').textContent=m==='molotow'?'(min. 3, max. 10)':'(min. 4, max. 10)';
+  document.getElementById('plimit').textContent=m==='molotow'?'(min. 3, max. 10)':teamType==='fix'?'(genau 4)':'(min. 4, max. 10)';
+  document.getElementById('teamTypeSec').style.display=m==='schieber'?'':'none';
+  document.getElementById('teamAssignSec').style.display=(m==='schieber'&&teamType==='fix'&&sp.length===4)?'':'none';
   uRO();
+}
+
+function selTeamType(t){
+  teamType=t;
+  document.getElementById('tt-turnier').className='ropt'+(t==='turnier'?' sel':'');
+  document.getElementById('tt-fix').className='ropt'+(t==='fix'?' sel':'');
+  document.getElementById('tt-turnier').querySelector('.dot').style.cssText=t==='turnier'?'border-color:#e7af3b;background:#e7af3b':'';
+  document.getElementById('tt-fix').querySelector('.dot').style.cssText=t==='fix'?'border-color:#e7af3b;background:#e7af3b':'';
+  document.getElementById('plimit').textContent=t==='fix'?'(genau 4)':'(min. 4, max. 10)';
+  if(t==='fix'){fixTeams=[[0,1],[2,3]]}
+  renderTeamAssign();
+  uRO();
+}
+
+function renderTeamAssign(){
+  const sec=document.getElementById('teamAssignSec');
+  if(gameMode!=='schieber'||teamType!=='fix'||sp.length!==4){sec.style.display='none';return}
+  sec.style.display='';
+  let h='<div style="display:flex;gap:8px">';
+  // Team 1
+  h+='<div style="flex:1;background:#161b22;border:1px solid rgba(231,175,59,.3);border-radius:10px;padding:10px;text-align:center"><div style="font-size:12px;font-weight:700;color:#e7af3b;margin-bottom:8px">Team 1</div>';
+  sp.forEach((n,i)=>{
+    const inT1=fixTeams[0].includes(i);
+    h+='<div style="padding:4px 8px;margin:3px 0;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid '+(inT1?'#e7af3b':'#30363d')+';background:'+(inT1?'rgba(231,175,59,.1)':'transparent')+';color:'+(inT1?'#e7af3b':'#484f58')+'" onclick="assignTeam('+i+',0)">'+esc(n)+'</div>';
+  });
+  h+='</div>';
+  // Team 2
+  h+='<div style="flex:1;background:#161b22;border:1px solid rgba(88,166,255,.3);border-radius:10px;padding:10px;text-align:center"><div style="font-size:12px;font-weight:700;color:#58a6ff;margin-bottom:8px">Team 2</div>';
+  sp.forEach((n,i)=>{
+    const inT2=fixTeams[1].includes(i);
+    h+='<div style="padding:4px 8px;margin:3px 0;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid '+(inT2?'#58a6ff':'#30363d')+';background:'+(inT2?'rgba(88,166,255,.1)':'transparent')+';color:'+(inT2?'#58a6ff':'#484f58')+'" onclick="assignTeam('+i+',1)">'+esc(n)+'</div>';
+  });
+  h+='</div></div>';
+  h+='<div style="font-size:10px;color:#484f58;text-align:center;margin-top:6px">Tippe einen Namen um ihn zuzuweisen (2 pro Team)</div>';
+  document.getElementById('teamAssign').innerHTML=h;
+}
+
+function assignTeam(playerIdx,teamIdx){
+  // Remove from both teams first
+  fixTeams[0]=fixTeams[0].filter(x=>x!==playerIdx);
+  fixTeams[1]=fixTeams[1].filter(x=>x!==playerIdx);
+  // Add to selected team (max 2)
+  if(fixTeams[teamIdx].length<2){fixTeams[teamIdx].push(playerIdx)}
+  renderTeamAssign();vStart();
 }
 
 function renderRegUsers(){
@@ -481,35 +540,44 @@ function addRegUser(uid,name){
   rSP();uRO();renderRegUsers();
 }
 
-function addP(){const i=document.getElementById('ni'),n=i.value.trim();if(!n||sp.some(x=>x.toLowerCase()===n.toLowerCase())||sp.length>=10){i.value='';return}sp.push(n);i.value='';i.focus();
-  // Check if name matches a registered user
+function addP(){const mx=teamType==='fix'?4:10;const i=document.getElementById('ni'),n=i.value.trim();if(!n||sp.some(x=>x.toLowerCase()===n.toLowerCase())||sp.length>=mx){i.value='';return}sp.push(n);i.value='';i.focus();
   const match=allUsers.find(u=>u.display_name.toLowerCase()===n.toLowerCase());
   if(match)spUserMap[sp.length-1]=match.id;
-  rSP();uRO();renderRegUsers()}
+  if(teamType==='fix'&&sp.length===4){fixTeams=[[0,1],[2,3]]}
+  rSP();uRO();renderRegUsers();renderTeamAssign()}
 
 function remP(i){sp.splice(i,1);
-  // Rebuild user map with shifted indices
   const nm={};Object.entries(spUserMap).forEach(([k,v])=>{const ki=parseInt(k);if(ki<i)nm[ki]=v;else if(ki>i)nm[ki-1]=v});
   spUserMap=nm;
-  rSP();uRO();renderRegUsers()}
+  fixTeams=[[],[]]; // reset teams on remove
+  rSP();uRO();renderRegUsers();renderTeamAssign()}
 
 function rSP(){document.getElementById('plist').innerHTML=sp.map((n,i)=>{
   const isLinked=!!spUserMap[i];
   return '<span class="chip">'+(isLinked?'<span style="color:#3fb950;font-size:10px;margin-right:2px">●</span>':'')+n+'<span class="x" onclick="remP('+i+')">✕</span></span>'}).join('');
-  const mn=gameMode==='molotow'?3:4;document.getElementById('pcnt').textContent=sp.length+' Spieler'+(sp.length<mn?' (noch '+(mn-sp.length)+' nötig)':'')}
+  const mn=gameMode==='molotow'?3:teamType==='fix'?4:4;
+  const mx=teamType==='fix'?4:10;
+  document.getElementById('pcnt').textContent=sp.length+' Spieler'+(sp.length<mn?' (noch '+(mn-sp.length)+' nötig)':sp.length>mx?' (max. '+mx+')':'')}
 
 function maxC(n){if(gameMode==='molotow')return 99;const t=[];for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)t.push([i,j]);let c=0;for(let a=0;a<t.length;a++)for(let b=a+1;b<t.length;b++){if(new Set([...t[a],...t[b]]).size===4)c++}return c}
 
 function uRO(){const n=sp.length,s=document.getElementById('rsec');const mn=gameMode==='molotow'?3:4;
+  if(gameMode==='schieber'&&teamType==='fix'&&n!==4){s.style.display='none';document.getElementById('sbtn').disabled=true;return}
   if(n<mn){s.style.display='none';document.getElementById('sbtn').disabled=true;return}
   s.style.display='';
   if(gameMode==='molotow'){
-    // Molotow: free round count, suggest 8/12/16
     const opts=[{id:'r8',l:'8 Runden',d:'Standard',v:8},{id:'r12',l:'12 Runden',d:'Lang',v:12},{id:'r16',l:'16 Runden',d:'Marathon (4×4)',v:16},{id:'custom',l:'Eigene Anzahl',d:'Du bestimmst',v:0}];
     document.getElementById('ropts').innerHTML=opts.map(o=>'<div class="ropt'+(rMode===o.id?' sel':'')+'" onclick="selR2(\''+o.id+'\','+o.v+')"><div class="dot"></div><div><div class="rt">'+o.l+'</div><div class="rd">'+o.d+'</div></div></div>').join('');
     document.getElementById('crow').style.display=rMode==='custom'?'flex':'none';
     document.getElementById('rinfo').innerHTML='💣 '+n+' Spieler · Jeder für sich · Zehner-System';
     document.getElementById('balinfo').innerHTML=selR>0?'⚖️ '+selR+' Runden · Wenigste Punkte gewinnt':'';
+  }else if(teamType==='fix'){
+    const opts=[{id:'r3',l:'3 Runden',d:'Kurz',v:3},{id:'r5',l:'5 Runden',d:'Standard',v:5},{id:'r10',l:'10 Runden',d:'Lang',v:10},{id:'custom',l:'Eigene Anzahl',d:'Du bestimmst',v:0}];
+    document.getElementById('ropts').innerHTML=opts.map(o=>'<div class="ropt'+(rMode===o.id?' sel':'')+'" onclick="selR2(\''+o.id+'\','+o.v+')"><div class="dot"></div><div><div class="rt">'+o.l+'</div><div class="rd">'+o.d+'</div></div></div>').join('');
+    document.getElementById('crow').style.display=rMode==='custom'?'flex':'none';
+    const t1=fixTeams[0].map(i=>sp[i]).join(' & ')||'?';const t2=fixTeams[1].map(i=>sp[i]).join(' & ')||'?';
+    document.getElementById('rinfo').innerHTML='🤝 '+t1+' vs '+t2+' · Fixe Teams';
+    document.getElementById('balinfo').innerHTML=selR>0?'⚖️ '+selR+' Runden à 4 Ansagen':'';
   }else{
     const mx=maxC(n),sh=Math.min(mx,Math.max(3,Math.ceil(n*1.5))),md=Math.min(mx,Math.ceil(mx/2));
     const opts=[{id:'all',l:'Alle Kombinationen',d:mx+' Runden',v:mx}];
@@ -524,8 +592,12 @@ function uRO(){const n=sp.length,s=document.getElementById('rsec');const mn=game
   vStart()}
 
 function selR2(m,v){rMode=m;selR=m==='custom'?(parseInt(document.getElementById('cri').value)||5):v;uRO()}
-function selC(){rMode='custom';const v=parseInt(document.getElementById('cri').value);const mx=gameMode==='molotow'?99:maxC(sp.length);selR=Math.max(1,Math.min(mx,v||1));uRO()}
-function vStart(){const mn=gameMode==='molotow'?3:4;document.getElementById('sbtn').disabled=!(sp.length>=mn&&selR>0);document.getElementById('sbtn').textContent=gameMode==='molotow'?'💣 Molotow starten':'🃏 Turnier starten'}
+function selC(){rMode='custom';const v=parseInt(document.getElementById('cri').value);const mx=gameMode==='molotow'?99:teamType==='fix'?99:maxC(sp.length);selR=Math.max(1,Math.min(mx,v||1));uRO()}
+function vStart(){const mn=gameMode==='molotow'?3:4;
+  let ok=sp.length>=mn&&selR>0;
+  if(gameMode==='schieber'&&teamType==='fix'){ok=sp.length===4&&selR>0&&fixTeams[0].length===2&&fixTeams[1].length===2}
+  document.getElementById('sbtn').disabled=!ok;
+  document.getElementById('sbtn').textContent=gameMode==='molotow'?'💣 Molotow starten':teamType==='fix'?'🤝 Spiel starten':'🃏 Turnier starten'}
 
 // ══════ SCHEDULE (Schieber only) ══════
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
@@ -548,13 +620,22 @@ function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i
 async function startT(){
   const btn=document.getElementById('sbtn');btn.disabled=true;btn.textContent='Wird erstellt...';
   const code=genCode(),tname=document.getElementById('tname').value.trim()||'Jass-Turnier';
-  const rounds=gameMode==='schieber'?genSched(sp,selR):[];
+  let rounds=[];
+  if(gameMode==='schieber'&&teamType==='fix'){
+    // Fixed teams: same matchup every round, alternating who announces
+    for(let r=0;r<selR;r++){
+      rounds.push({t1:[...fixTeams[0]],t2:[...fixTeams[1]],pa:[],ans:[fixTeams[0][r%2],fixTeams[1][r%2],fixTeams[0][(r+1)%2],fixTeams[1][(r+1)%2]]});
+    }
+  }else if(gameMode==='schieber'){
+    rounds=genSched(sp,selR);
+  }
+  const gt=gameMode==='schieber'&&teamType==='fix'?'schieber_fix':gameMode;
   try{
-    const{data:t,error}=await sb.from('jass_tournaments').insert({code,name:tname,created_by:curUser.id,players:sp,rounds,nr_rounds:selR,game_type:gameMode,player_user_ids:spUserMap}).select().single();
+    const{data:t,error}=await sb.from('jass_tournaments').insert({code,name:tname,created_by:curUser.id,players:sp,rounds,nr_rounds:selR,game_type:gt,player_user_ids:spUserMap}).select().single();
     if(error)throw error;
     await sb.from('jass_participants').insert({tournament_id:t.id,user_id:curUser.id,player_name:curUser.display_name});
     toast('Code: '+code);openTournament(t.id);
-  }catch(e){alert('Fehler: '+e.message);btn.disabled=false;btn.textContent=gameMode==='molotow'?'💣 Molotow starten':'🃏 Turnier starten'}
+  }catch(e){alert('Fehler: '+e.message);btn.disabled=false;btn.textContent=gameMode==='molotow'?'💣 Molotow starten':teamType==='fix'?'🤝 Spiel starten':'🃏 Turnier starten'}
 }
 
 // ══════ OPEN TOURNAMENT ══════
