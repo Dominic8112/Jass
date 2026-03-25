@@ -494,7 +494,7 @@ async function openTournament(tid){
   TN={players:t.players,rounds:t.rounds||[],nr:t.nr_rounds,code:t.code,id:t.id,status:t.status,name:t.name||'Jass-Turnier',type:t.game_type||'schieber'};
   D={};
   const{data:scores}=await sb.from('jass_scores').select('*').eq('tournament_id',tid);
-  if(scores)scores.forEach(s=>{D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{}}});
+  if(scores)scores.forEach(s=>{D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{},md:s.molotow_data||null}});
   showApp();subscribeRT(tid);
 }
 
@@ -505,7 +505,7 @@ function subscribeRT(tid){
   realtimeSub=sb.channel('jt-'+tid)
     .on('postgres_changes',{event:'*',schema:'public',table:'jass_scores',filter:'tournament_id=eq.'+tid},p=>{
       const s=p.new;if(!s)return;
-      D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{}};
+      D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{},md:s.molotow_data||null};
       if(TN.type==='molotow'){renderMolo()}else{uDisp(s.game_index,s.round_index);uTot(s.game_index)}
     }).subscribe(st=>{if(dot)dot.className='sync-dot '+(st==='SUBSCRIBED'?'sync-on':'sync-off')});
 }
@@ -581,11 +581,11 @@ const hs=document.getElementById('hs-'+gi);if(hs)hs.textContent=t.any?t.s1+':'+t
 const hst=document.getElementById('hst-'+gi);if(hst)hst.textContent=t.ok?'✅':t.any?'⏳':'';uPr()}
 
 function uPr(){
-  if(TN.type==='molotow'){let d=0;for(let i=0;i<TN.nr;i++){const r=rd(i,0);if(r.s1!==null)d++}document.getElementById('pc').textContent=d;document.getElementById('pf').style.width=(d/TN.nr*100)+'%'}
+  if(TN.type==='molotow'){let d=0;for(let i=0;i<TN.nr;i++){const data=getMoloRound(i);if(data&&data.every(p=>p.cards!==null))d++}document.getElementById('pc').textContent=d;document.getElementById('pf').style.width=(d/TN.nr*100)+'%'}
   else{let d=0;for(let i=0;i<TN.nr;i++)if(gTot(i).ok)d++;document.getElementById('pc').textContent=d;document.getElementById('pf').style.width=(d/TN.nr*100)+'%'}
 }
 
-function firstUnfinished(){if(TN.type==='molotow'){for(let i=0;i<TN.nr;i++){const r=rd(i,0);if(r.s1===null)return i}return -1}for(let i=0;i<TN.nr;i++){if(!gTot(i).ok)return i}return -1}
+function firstUnfinished(){if(TN.type==='molotow'){for(let i=0;i<TN.nr;i++){const data=getMoloRound(i);if(!data||!data.every(p=>p.cards!==null))return i}return -1}for(let i=0;i<TN.nr;i++){if(!gTot(i).ok)return i}return -1}
 
 // ══════ SCHIEBER RENDER ══════
 function renderG(){
@@ -617,8 +617,7 @@ function renderG(){
 
 function getMoloRound(ri){
   const r=rd(ri,0);
-  if(r.s1!==null&&typeof r.s1==='string'){try{return JSON.parse(r.s1)}catch(e){}}
-  if(r.s1!==null&&Array.isArray(r.s1))return r.s1;
+  if(r.md)return Array.isArray(r.md)?r.md:(typeof r.md==='string'?JSON.parse(r.md):null);
   return null;
 }
 
@@ -632,10 +631,9 @@ function calcMoloPts(p){
 
 function saveMoloRound(ri,data){
   const k=ri+'-0';
-  D[k]={s1:JSON.stringify(data),s2:null,m:0,e:null,w:{}};
-  // Save to supabase
+  D[k]={s1:null,s2:null,m:0,e:null,w:{},md:data};
   const tk='m-'+ri;clearTimeout(saveTimers[tk]);saveTimers[tk]=setTimeout(async()=>{
-    try{const{error}=await sb.from('jass_scores').upsert({tournament_id:curTournament,game_index:ri,round_index:0,score_t1:JSON.stringify(data),score_t2:null,match_flag:0,entered_by:null,weisen:{},updated_by:curUser.id},{onConflict:'tournament_id,game_index,round_index'});
+    try{const{error}=await sb.from('jass_scores').upsert({tournament_id:curTournament,game_index:ri,round_index:0,score_t1:null,score_t2:null,match_flag:0,entered_by:null,weisen:{},molotow_data:data,updated_by:curUser.id},{onConflict:'tournament_id,game_index,round_index'});
     if(error){console.error(error);toast('⚠️ '+error.message)}}catch(e){toast('⚠️ '+e.message)}
   },400);
 }
