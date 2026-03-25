@@ -611,74 +611,95 @@ function renderG(){
   document.getElementById('p-games').innerHTML=h}
 
 // ══════ MOLOTOW LOGIC ══════
-// Score storage for Molotow: per round (game_index=round, round_index=0)
-// s1 = JSON string: [{cards:23,hw:0,tw:0,match:false,zero:false}, ...] per player
-// s2 = null, m = 0
+// Data per player: {cards, match, zero, hweise:{wid:count}, tweise:{wid:count}}
 
 function getMoloRound(ri){
   const r=rd(ri,0);
   if(r.md)return Array.isArray(r.md)?r.md:(typeof r.md==='string'?JSON.parse(r.md):null);
   return null;
 }
+function emptyMoloPlayer(){return{cards:null,match:false,zero:false,hweise:{},tweise:{}}}
+function moloWeisSum(wObj){if(!wObj)return 0;let s=0;Object.entries(wObj).forEach(([id,cnt])=>{const w=WS.find(x=>x.id===id);if(w)s+=w.p*cnt});return s}
 
 function calcMoloPts(p){
-  // p = {cards, hw, tw, match, zero}
   if(p.match)return -15;
   if(p.zero)return -1;
-  const netto=p.cards-(p.hw||0)+(p.tw||0);
-  return Math.round(netto/10);
+  if(p.cards===null)return null;
+  return Math.round((p.cards-moloWeisSum(p.hweise)+moloWeisSum(p.tweise))/10);
 }
 
 function saveMoloRound(ri,data){
-  const k=ri+'-0';
-  D[k]={s1:null,s2:null,m:0,e:null,w:{},md:data};
+  D[ri+'-0']={s1:null,s2:null,m:0,e:null,w:{},md:data};
   const tk='m-'+ri;clearTimeout(saveTimers[tk]);saveTimers[tk]=setTimeout(async()=>{
     try{const{error}=await sb.from('jass_scores').upsert({tournament_id:curTournament,game_index:ri,round_index:0,score_t1:null,score_t2:null,match_flag:0,entered_by:null,weisen:{},molotow_data:data,updated_by:curUser.id},{onConflict:'tournament_id,game_index,round_index'});
     if(error){console.error(error);toast('⚠️ '+error.message)}}catch(e){toast('⚠️ '+e.message)}
   },400);
 }
 
-function setMoloVal(ri,pi,field,val){
-  const P=TN.players;let data=getMoloRound(ri)||P.map(()=>({cards:null,hw:0,tw:0,match:false,zero:false}));
-  if(field==='cards')data[pi].cards=val===''?null:Math.max(0,Math.min(257,parseInt(val)||0));
-  else if(field==='hw')data[pi].hw=val===''?0:Math.max(0,parseInt(val)||0);
-  else if(field==='tw')data[pi].tw=val===''?0:Math.max(0,parseInt(val)||0);
-  else if(field==='match'){data[pi].match=val;if(val){data[pi].zero=false;data[pi].cards=157}}
-  else if(field==='zero'){data[pi].zero=val;if(val){data[pi].match=false;data[pi].cards=0}}
-  saveMoloRound(ri,data);
-  renderMolo();
+function updMoloPtsUI(ri,pi,data){
+  const pts=calcMoloPts(data[pi]);const el=document.getElementById('mp-'+ri+'-'+pi);
+  if(el){el.textContent=pts!==null?pts:'—';el.className='molo-pts '+(pts===null?'zero':pts<0?'neg':'pos')}
+  const hwS=moloWeisSum(data[pi].hweise),twS=moloWeisSum(data[pi].tweise);
+  const he=document.getElementById('mws-'+ri+'-'+pi+'-h');if(he)he.textContent=hwS?'-'+hwS:'0';
+  const te=document.getElementById('mws-'+ri+'-'+pi+'-t');if(te)te.textContent=twS?'+'+twS:'0';
+  uPr();
 }
+
+function setMoloCards(ri,pi,val){
+  const P=TN.players;let data=getMoloRound(ri)||P.map(()=>emptyMoloPlayer());
+  data[pi].cards=val===''?null:Math.max(0,Math.min(257,parseInt(val)||0));
+  saveMoloRound(ri,data);updMoloPtsUI(ri,pi,data);
+}
+function setMoloFlag(ri,pi,field,val){
+  const P=TN.players;let data=getMoloRound(ri)||P.map(()=>emptyMoloPlayer());
+  if(field==='match'){data[pi].match=val;if(val){data[pi].zero=false;data[pi].cards=157}}
+  else{data[pi].zero=val;if(val){data[pi].match=false;data[pi].cards=0}}
+  saveMoloRound(ri,data);renderMolo();
+}
+function adjMoloWeis(ri,pi,type,wid,delta){
+  const P=TN.players;let data=getMoloRound(ri)||P.map(()=>emptyMoloPlayer());
+  const key=type==='h'?'hweise':'tweise';if(!data[pi][key])data[pi][key]={};
+  const nv=Math.max(0,Math.min(9,(data[pi][key][wid]||0)+delta));
+  if(nv===0)delete data[pi][key][wid];else data[pi][key][wid]=nv;
+  saveMoloRound(ri,data);
+  const ne=document.getElementById('mw-'+ri+'-'+pi+'-'+type+'-'+wid+'-n');if(ne)ne.textContent=nv;
+  const ce=document.getElementById('mw-'+ri+'-'+pi+'-'+type+'-'+wid);if(ce)ce.classList.toggle('has',nv>0);
+  updMoloPtsUI(ri,pi,data);
+}
+function togMW(ri,pi){document.getElementById('mwb-'+ri+'-'+pi).classList.toggle('open')}
 
 function renderMolo(){
   const P=TN.players;let h='';const ao=firstUnfinished();
   for(let ri=0;ri<TN.nr;ri++){
-    const data=getMoloRound(ri);const done=data&&data.every(p=>p.cards!==null);const isOpen=ri===ao;
+    const data=getMoloRound(ri);const done=data&&data.every(p=>p.cards!==null);
     h+='<div class="molo-rnd'+(ri===ao?' current':'')+'"><div class="molo-rnd-hdr" onclick="document.getElementById(\'mb-'+ri+'\').classList.toggle(\'open\')"><span class="molo-rnd-num">R'+(ri+1)+'</span><span class="molo-rnd-title">'+(done?'Runde '+(ri+1):'—')+'</span><span class="molo-rnd-st">'+(done?'✅':'')+'</span></div>';
-    h+='<div class="molo-rnd-body'+(isOpen?' open':'')+'" id="mb-'+ri+'">';
-    // Header
-    h+='<div style="display:flex;padding:4px 0;border-bottom:1px solid #21262d;margin-bottom:4px"><span class="molo-pname" style="font-size:9px;color:#484f58">SPIELER</span><span class="molo-col" style="font-size:9px;color:#484f58">Karten</span><span class="molo-col" style="font-size:9px;color:#484f58">H-Weis</span><span class="molo-col" style="font-size:9px;color:#484f58">T-Weis</span><span class="molo-pts" style="font-size:9px;color:#484f58">Pkt</span></div>';
+    h+='<div class="molo-rnd-body'+(ri===ao?' open':'')+'" id="mb-'+ri+'">';
     P.forEach((name,pi)=>{
-      const pd=data?data[pi]:{cards:null,hw:0,tw:0,match:false,zero:false};
-      const pts=pd&&pd.cards!==null?calcMoloPts(pd):null;
+      const pd=data?data[pi]:emptyMoloPlayer();
+      const pts=pd.cards!==null?calcMoloPts(pd):null;
       const ptsCls=pts===null?'zero':pts<0?'neg':'pos';
-      const isMatch=pd&&pd.match;const isZero=pd&&pd.zero;
-      h+='<div class="molo-row"><span class="molo-pname">'+esc(name);
-      if(isMatch)h+=' <span class="molo-badge badge-match">MATCH</span>';
-      if(isZero)h+=' <span class="molo-badge badge-null">0 STICHE</span>';
-      h+='</span>';
-      h+='<span class="molo-col"><input value="'+(pd&&pd.cards!==null?pd.cards:'')+'" placeholder="—" inputmode="numeric"'+(isMatch||isZero?' class="ro" readonly':'')+' onfocus="this.select()" oninput="setMoloVal('+ri+','+pi+',\'cards\',this.value)"></span>';
-      h+='<span class="molo-col"><input value="'+(pd&&pd.hw?pd.hw:'')+'" placeholder="—" inputmode="numeric" onfocus="this.select()" oninput="setMoloVal('+ri+','+pi+',\'hw\',this.value)"></span>';
-      h+='<span class="molo-col"><input value="'+(pd&&pd.tw?pd.tw:'')+'" placeholder="—" inputmode="numeric" onfocus="this.select()" oninput="setMoloVal('+ri+','+pi+',\'tw\',this.value)"></span>';
-      h+='<span class="molo-pts '+ptsCls+'">'+(pts!==null?pts:'—')+'</span></div>';
+      const hwS=moloWeisSum(pd.hweise),twS=moloWeisSum(pd.tweise);
+      h+='<div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px 10px;margin-bottom:6px">';
+      h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-weight:700;font-size:13px">'+esc(name);
+      if(pd.match)h+=' <span class="molo-badge badge-match">MATCH</span>';
+      if(pd.zero)h+=' <span class="molo-badge badge-null">0 STICHE</span>';
+      h+='</span><span class="molo-pts '+ptsCls+'" id="mp-'+ri+'-'+pi+'" style="font-size:18px">'+(pts!==null?pts:'—')+'</span></div>';
+      h+='<div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:#8b949e;width:40px">Karten</span>';
+      h+='<input type="number" inputmode="numeric" min="0" max="257" value="'+(pd.cards!==null?pd.cards:'')+'" placeholder="Pkt" style="width:60px;background:#161b22;border:1px solid #30363d;border-radius:5px;color:#e6edf3;font-size:14px;font-weight:700;text-align:center;padding:6px 4px;font-family:DM Sans"'+(pd.match||pd.zero?' readonly':'')+' onfocus="this.select()" oninput="setMoloCards('+ri+','+pi+',this.value)">';
+      h+='<div style="display:flex;gap:4px;margin-left:auto"><div class="mbtn'+(pd.match?' active':'')+'" onclick="setMoloFlag('+ri+','+pi+',\'match\','+(!pd.match)+')">💥</div>';
+      h+='<div class="mbtn'+(pd.zero?' active':'')+ '" style="'+(pd.zero?'border-color:#58a6ff;background:rgba(88,166,255,.12);color:#58a6ff':'')+'" onclick="setMoloFlag('+ri+','+pi+',\'zero\','+(!pd.zero)+')">🎯</div></div></div>';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><span style="font-size:11px;color:#58a6ff;cursor:pointer" onclick="togMW('+ri+','+pi+')">+ Weise</span>';
+      h+='<span style="font-size:10px"><span style="color:#3fb950" id="mws-'+ri+'-'+pi+'-h">'+(hwS?'-'+hwS:'0')+'</span> H · <span style="color:#f85149" id="mws-'+ri+'-'+pi+'-t">'+(twS?'+'+twS:'0')+'</span> T</span></div>';
+      h+='<div class="wblock" id="mwb-'+ri+'-'+pi+'">';
+      h+='<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:9px;font-weight:700;color:#8b949e"><span style="color:#3fb950">Hand</span><span>Weis</span><span style="color:#f85149">Tisch</span></div>';
+      WS.forEach(wt=>{
+        const hc=(pd.hweise&&pd.hweise[wt.id])||0,tc=(pd.tweise&&pd.tweise[wt.id])||0;
+        h+='<div class="wrow"><div class="wcnt t1'+(hc?' has':'')+'" id="mw-'+ri+'-'+pi+'-h-'+wt.id+'"><button onclick="adjMoloWeis('+ri+','+pi+',\'h\',\''+wt.id+'\',-1)">−</button><div class="num" id="mw-'+ri+'-'+pi+'-h-'+wt.id+'-n">'+hc+'</div><button onclick="adjMoloWeis('+ri+','+pi+',\'h\',\''+wt.id+'\',1)">+</button></div>';
+        h+='<div class="wname">'+wt.n+' <span class="wp">'+wt.p+'</span></div>';
+        h+='<div class="wcnt t2'+(tc?' has':'')+'" id="mw-'+ri+'-'+pi+'-t-'+wt.id+'"><button onclick="adjMoloWeis('+ri+','+pi+',\'t\',\''+wt.id+'\',-1)">−</button><div class="num" id="mw-'+ri+'-'+pi+'-t-'+wt.id+'-n">'+tc+'</div><button onclick="adjMoloWeis('+ri+','+pi+',\'t\',\''+wt.id+'\',1)">+</button></div></div>'});
+      h+='</div></div>';
     });
-    // Match/Zero checkboxes
-    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;padding-top:6px;border-top:1px solid #21262d">';
-    P.forEach((name,pi)=>{
-      const pd=data?data[pi]:{match:false,zero:false};
-      h+='<div class="molo-chk"><label><input type="checkbox" '+(pd&&pd.match?'checked':'')+' onchange="setMoloVal('+ri+','+pi+',\'match\',this.checked)"> 💥 '+name[0]+'</label>';
-      h+='<label><input type="checkbox" '+(pd&&pd.zero?'checked':'')+' onchange="setMoloVal('+ri+','+pi+',\'zero\',this.checked)"> 🎯 '+name[0]+'</label></div>';
-    });
-    h+='</div><div class="hint">💥 Match (-15) · 🎯 0 Stiche (-1)</div>';
+    h+='<div class="hint">💥 Match (-15) · 🎯 0 Stiche (-1) · Hand = abziehen (gut) · Tisch = drauf (schlecht)</div>';
     h+='</div></div>';
   }
   h+='<button class="nbtn" onclick="leaveTournament()">← Zurück zur Lobby</button>';
@@ -691,7 +712,7 @@ function getMoloTotals(){
   for(let ri=0;ri<TN.nr;ri++){const data=getMoloRound(ri);if(!data||!data.every(p=>p.cards!==null))continue;
     data.forEach((p,pi)=>{const pts=calcMoloPts(p);totals[pi].total+=pts;totals[pi].rounds++;totals[pi].rPts.push(pts);
       if(p.match)totals[pi].matches++;if(p.zero)totals[pi].zeros++;
-      totals[pi].hw+=(p.hw||0);totals[pi].tw+=(p.tw||0);
+      totals[pi].hw+=moloWeisSum(p.hweise);totals[pi].tw+=moloWeisSum(p.tweise);
       if(pts<totals[pi].best)totals[pi].best=pts;if(pts>totals[pi].worst)totals[pi].worst=pts})}
   return totals;
 }
