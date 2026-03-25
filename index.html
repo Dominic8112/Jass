@@ -524,8 +524,10 @@ function rd(g,r){const k=g+'-'+r;if(!D[k])D[k]={s1:null,s2:null,m:0,e:null,w:{}}
 let saveTimers={};
 function saveScore(gi,ri){const tk=gi+'-'+ri;clearTimeout(saveTimers[tk]);saveTimers[tk]=setTimeout(async()=>{
   const r=rd(gi,ri);
-  const{error}=await sb.from('jass_scores').upsert({tournament_id:curTournament,game_index:gi,round_index:ri,score_t1:r.s1,score_t2:r.s2,match_flag:r.m,entered_by:r.e,weisen:r.w||{},updated_by:curUser.id},{onConflict:'tournament_id,game_index,round_index'});
-  if(error)console.error('Save:',error);
+  try{
+    const{error}=await sb.from('jass_scores').upsert({tournament_id:curTournament,game_index:gi,round_index:ri,score_t1:r.s1,score_t2:r.s2,match_flag:r.m,entered_by:r.e,weisen:r.w||{},updated_by:curUser.id},{onConflict:'tournament_id,game_index,round_index'});
+    if(error){console.error('Save:',error);toast('⚠️ Speichern fehlgeschlagen: '+error.message)}
+  }catch(e){console.error('Save exception:',e);toast('⚠️ Fehler: '+e.message)}
 },300)}
 
 function stab(id,el){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.pnl').forEach(p=>p.classList.remove('active'));el.classList.add('active');document.getElementById('p-'+id).classList.add('active');if(id==='rank')rRk();if(id==='stats')rSt()}
