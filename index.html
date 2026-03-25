@@ -300,9 +300,10 @@ html,body{background:#0d1117 !important;color:#e6edf3 !important;font-family:'DM
   <div class="pl" id="plist"></div>
   <div class="pcount" id="pcnt"></div>
   <div id="rsec" style="display:none">
-    <h2>🔄 Anzahl Runden</h2>
+    <h2 id="rsec-title">🔄 Anzahl Runden</h2>
     <div id="ropts"></div>
     <div class="cr" id="crow"><input type="number" id="cri" min="1" max="99" value="5" oninput="selC()"><span>Runden</span></div>
+    <div class="cr" id="ptsrow" style="display:none"><input type="number" id="ptsi" min="100" max="9999" value="1000" step="100" oninput="selPtsLimit()"><span>Punkte</span></div>
     <div class="ib" id="rinfo"></div>
     <div class="balance-info" id="balinfo"></div>
   </div>
@@ -439,7 +440,7 @@ async function delTournament(tid,name){
   const{error}=await sb.from('jass_tournaments').delete().eq('id',tid);if(error)throw error;toast('Gelöscht');loadMyTournaments();}catch(e){toast('⚠️ '+e.message)}
 }
 
-async function showSetup(){sp=curUser?[curUser.display_name]:[];spUserMap=curUser?{0:curUser.id}:{};selR=0;rMode='';gameMode='schieber';teamType='turnier';document.getElementById('tname').value='Jass-Turnier';selMode('schieber');selTeamType('turnier');await loadAllUsers();rSP();uRO();renderRegUsers();showScreen('SS')}
+async function showSetup(){sp=curUser?[curUser.display_name]:[];spUserMap=curUser?{0:curUser.id}:{};selR=0;rMode='';ptsLimit=0;gameMode='schieber';teamType='turnier';document.getElementById('tname').value='Jass-Turnier';selMode('schieber');selTeamType('turnier');await loadAllUsers();rSP();uRO();renderRegUsers();showScreen('SS')}
 function backToLobby(){showScreen('LOBBY');loadMyTournaments()}
 function openJoinModal(){document.getElementById('joinModal').classList.add('open');document.getElementById('j-code').value='';document.getElementById('j-err').textContent='';document.getElementById('j-code').focus()}
 function closeJoinModal(){document.getElementById('joinModal').classList.remove('open')}
@@ -460,6 +461,7 @@ let allUsers=[];
 let spUserMap={};
 let teamType='turnier'; // 'turnier' or 'fix'
 let fixTeams=[[],[]]; // for fix mode: [[idx,idx],[idx,idx]]
+let ptsLimit=0; // 0 = rounds mode, >0 = play until score limit
 
 async function loadAllUsers(){
   const{data}=await sb.from('jass_users').select('id,display_name,username');
@@ -572,12 +574,19 @@ function uRO(){const n=sp.length,s=document.getElementById('rsec');const mn=game
     document.getElementById('rinfo').innerHTML='💣 '+n+' Spieler · Jeder für sich · Zehner-System';
     document.getElementById('balinfo').innerHTML=selR>0?'⚖️ '+selR+' Runden · Wenigste Punkte gewinnt':'';
   }else if(teamType==='fix'){
-    const opts=[{id:'r3',l:'3 Runden',d:'Kurz',v:3},{id:'r5',l:'5 Runden',d:'Standard',v:5},{id:'r10',l:'10 Runden',d:'Lang',v:10},{id:'custom',l:'Eigene Anzahl',d:'Du bestimmst',v:0}];
-    document.getElementById('ropts').innerHTML=opts.map(o=>'<div class="ropt'+(rMode===o.id?' sel':'')+'" onclick="selR2(\''+o.id+'\','+o.v+')"><div class="dot"></div><div><div class="rt">'+o.l+'</div><div class="rd">'+o.d+'</div></div></div>').join('');
+    document.getElementById('rsec-title').textContent='🔄 Spielmodus';
+    const opts=[
+      {id:'r3',l:'3 Runden',d:'Kurz',v:3,pts:0},{id:'r5',l:'5 Runden',d:'Standard',v:5,pts:0},{id:'r10',l:'10 Runden',d:'Lang',v:10,pts:0},
+      {id:'p1000',l:'Bis 1000 Pkt',d:'Punktelimit',v:100,pts:1000},{id:'p1500',l:'Bis 1500 Pkt',d:'Punktelimit',v:100,pts:1500},{id:'p2000',l:'Bis 2000 Pkt',d:'Punktelimit',v:100,pts:2000},
+      {id:'custom',l:'Eigene Anzahl',d:'Runden',v:0,pts:0},{id:'custompts',l:'Eigenes Limit',d:'Punkte',v:0,pts:0}
+    ];
+    document.getElementById('ropts').innerHTML=opts.map(o=>'<div class="ropt'+(rMode===o.id?' sel':'')+'" onclick="selR3(\''+o.id+'\','+o.v+','+o.pts+')"><div class="dot"></div><div><div class="rt">'+o.l+'</div><div class="rd">'+o.d+'</div></div></div>').join('');
     document.getElementById('crow').style.display=rMode==='custom'?'flex':'none';
+    document.getElementById('ptsrow').style.display=rMode==='custompts'?'flex':'none';
     const t1=fixTeams[0].map(i=>sp[i]).join(' & ')||'?';const t2=fixTeams[1].map(i=>sp[i]).join(' & ')||'?';
     document.getElementById('rinfo').innerHTML='🤝 '+t1+' vs '+t2+' · Fixe Teams';
-    document.getElementById('balinfo').innerHTML=selR>0?'⚖️ '+selR+' Runden à 4 Ansagen':'';
+    if(ptsLimit>0){document.getElementById('balinfo').innerHTML='🎯 Wer zuerst '+ptsLimit+' Punkte erreicht, gewinnt'}
+    else{document.getElementById('balinfo').innerHTML=selR>0?'⚖️ '+selR+' Runden à 4 Ansagen':''}
   }else{
     const mx=maxC(n),sh=Math.min(mx,Math.max(3,Math.ceil(n*1.5))),md=Math.min(mx,Math.ceil(mx/2));
     const opts=[{id:'all',l:'Alle Kombinationen',d:mx+' Runden',v:mx}];
@@ -591,11 +600,18 @@ function uRO(){const n=sp.length,s=document.getElementById('rsec');const mn=game
   }
   vStart()}
 
-function selR2(m,v){rMode=m;selR=m==='custom'?(parseInt(document.getElementById('cri').value)||5):v;uRO()}
-function selC(){rMode='custom';const v=parseInt(document.getElementById('cri').value);const mx=gameMode==='molotow'?99:teamType==='fix'?99:maxC(sp.length);selR=Math.max(1,Math.min(mx,v||1));uRO()}
+function selR2(m,v){rMode=m;ptsLimit=0;selR=m==='custom'?(parseInt(document.getElementById('cri').value)||5):v;uRO()}
+function selR3(m,v,pts){rMode=m;
+  if(pts>0){ptsLimit=pts;selR=100}  // 100 rounds max for score-limit mode
+  else if(m==='custom'){ptsLimit=0;selR=parseInt(document.getElementById('cri').value)||5}
+  else if(m==='custompts'){ptsLimit=parseInt(document.getElementById('ptsi').value)||1000;selR=100}
+  else{ptsLimit=0;selR=v}
+  uRO()}
+function selC(){rMode='custom';ptsLimit=0;const v=parseInt(document.getElementById('cri').value);const mx=gameMode==='molotow'?99:teamType==='fix'?99:maxC(sp.length);selR=Math.max(1,Math.min(mx,v||1));uRO()}
+function selPtsLimit(){rMode='custompts';ptsLimit=parseInt(document.getElementById('ptsi').value)||1000;selR=100;uRO()}
 function vStart(){const mn=gameMode==='molotow'?3:4;
-  let ok=sp.length>=mn&&selR>0;
-  if(gameMode==='schieber'&&teamType==='fix'){ok=sp.length===4&&selR>0&&fixTeams[0].length===2&&fixTeams[1].length===2}
+  let ok=sp.length>=mn&&(selR>0||ptsLimit>0);
+  if(gameMode==='schieber'&&teamType==='fix'){ok=sp.length===4&&(selR>0||ptsLimit>0)&&fixTeams[0].length===2&&fixTeams[1].length===2}
   document.getElementById('sbtn').disabled=!ok;
   document.getElementById('sbtn').textContent=gameMode==='molotow'?'💣 Molotow starten':teamType==='fix'?'🤝 Spiel starten':'🃏 Turnier starten'}
 
@@ -620,10 +636,9 @@ function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i
 async function startT(){
   const btn=document.getElementById('sbtn');btn.disabled=true;btn.textContent='Wird erstellt...';
   const code=genCode(),tname=document.getElementById('tname').value.trim()||'Jass-Turnier';
-  let rounds=[];
+  let rounds=[];const nrToSave=ptsLimit>0?100:selR;
   if(gameMode==='schieber'&&teamType==='fix'){
-    // Fixed teams: same matchup every round, alternating who announces
-    for(let r=0;r<selR;r++){
+    for(let r=0;r<nrToSave;r++){
       rounds.push({t1:[...fixTeams[0]],t2:[...fixTeams[1]],pa:[],ans:[fixTeams[0][r%2],fixTeams[1][r%2],fixTeams[0][(r+1)%2],fixTeams[1][(r+1)%2]]});
     }
   }else if(gameMode==='schieber'){
@@ -631,7 +646,9 @@ async function startT(){
   }
   const gt=gameMode==='schieber'&&teamType==='fix'?'schieber_fix':gameMode;
   try{
-    const{data:t,error}=await sb.from('jass_tournaments').insert({code,name:tname,created_by:curUser.id,players:sp,rounds,nr_rounds:selR,game_type:gt,player_user_ids:spUserMap}).select().single();
+    const insertData={code,name:tname,created_by:curUser.id,players:sp,rounds,nr_rounds:nrToSave,game_type:gt,player_user_ids:spUserMap};
+    if(ptsLimit>0)insertData.pts_limit=ptsLimit;
+    const{data:t,error}=await sb.from('jass_tournaments').insert(insertData).select().single();
     if(error)throw error;
     await sb.from('jass_participants').insert({tournament_id:t.id,user_id:curUser.id,player_name:curUser.display_name});
     toast('Code: '+code);openTournament(t.id);
@@ -643,7 +660,7 @@ async function openTournament(tid){
   curTournament=tid;
   const{data:t}=await sb.from('jass_tournaments').select('*').eq('id',tid).single();
   if(!t){alert('Turnier nicht gefunden');return}
-  TN={players:t.players,rounds:t.rounds||[],nr:t.nr_rounds,code:t.code,id:t.id,status:t.status,name:t.name||'Jass-Turnier',type:t.game_type||'schieber',playerUserIds:t.player_user_ids||{}};
+  TN={players:t.players,rounds:t.rounds||[],nr:t.nr_rounds,code:t.code,id:t.id,status:t.status,name:t.name||'Jass-Turnier',type:t.game_type||'schieber',playerUserIds:t.player_user_ids||{},ptsLimit:t.pts_limit||0};
   D={};
   const{data:scores}=await sb.from('jass_scores').select('*').eq('tournament_id',tid);
   if(scores)scores.forEach(s=>{D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{},md:s.molotow_data||null}});
@@ -668,7 +685,8 @@ function showApp(){
   const isMolo=TN.type==='molotow';
   const hero=document.getElementById('app-hero');hero.className='hero'+(isMolo?' molo':'');
   document.getElementById('ah-title').innerHTML=(isMolo?'💣 ':'🃏 ')+esc(TN.name)+' <span class="edit-icon" onclick="renameTournament()">✏️</span>';
-  document.getElementById('asub').textContent=TN.players.length+' Spieler · '+TN.nr+(isMolo?' Runden':' Spiele');
+  const subText=TN.ptsLimit>0?TN.players.length+' Spieler · Bis '+TN.ptsLimit+' Pkt':TN.players.length+' Spieler · '+TN.nr+(isMolo?' Runden':' Spiele');
+  document.getElementById('asub').textContent=subText;
   document.getElementById('acode').textContent='📋 Code: '+TN.code+' (tippen zum Kopieren)';
   document.getElementById('pt').textContent=TN.nr;
   document.getElementById('punit').textContent=isMolo?'Runden':'Spiele';
@@ -785,20 +803,67 @@ const hst=document.getElementById('hst-'+gi);if(hst)hst.textContent=t.ok?'✅':t
 
 function uPr(){
   if(TN.type==='molotow'){let d=0;for(let i=0;i<TN.nr;i++){const data=getMoloRound(i);if(data&&data.every(p=>p.cards!==null))d++}document.getElementById('pc').textContent=d;document.getElementById('pf').style.width=(d/TN.nr*100)+'%'}
-  else{let d=0;for(let i=0;i<TN.nr;i++)if(gTot(i).ok)d++;document.getElementById('pc').textContent=d;document.getElementById('pf').style.width=(d/TN.nr*100)+'%'}
+  else if(TN.ptsLimit){
+    const c=getCumulScores();if(!c)return;
+    const maxPts=Math.max(c.cum1,c.cum2);const pct=Math.min(100,Math.round(maxPts/TN.ptsLimit*100));
+    document.getElementById('pc').textContent=maxPts;document.getElementById('pt').textContent=TN.ptsLimit;
+    document.getElementById('punit').textContent='Punkte';document.getElementById('pf').style.width=pct+'%';
+  }else{let d=0;for(let i=0;i<TN.nr;i++)if(gTot(i).ok)d++;document.getElementById('pc').textContent=d;document.getElementById('pf').style.width=(d/TN.nr*100)+'%'}
 }
 
 function firstUnfinished(){if(TN.type==='molotow'){for(let i=0;i<TN.nr;i++){const data=getMoloRound(i);if(!data||!data.every(p=>p.cards!==null))return i}return -1}for(let i=0;i<TN.nr;i++){if(!gTot(i).ok)return i}return -1}
 
 // ══════ SCHIEBER RENDER ══════
+// Calculate cumulative scores for score-limit mode
+function getCumulScores(){
+  if(!TN.ptsLimit)return null;
+  let cum1=0,cum2=0,winnerAt=-1;
+  for(let gi=0;gi<TN.nr;gi++){
+    const t=gTot(gi);if(!t.ok)break;
+    cum1+=t.s1;cum2+=t.s2;
+    if(winnerAt<0&&(cum1>=TN.ptsLimit||cum2>=TN.ptsLimit))winnerAt=gi;
+  }
+  return{cum1,cum2,winnerAt};
+}
+
 function renderG(){
   const P=TN.players;let h='';const ao=firstUnfinished();
+  const cumul=getCumulScores();
+  const winAt=cumul?cumul.winnerAt:-1;
+
+  // Show cumulative score banner for pts-limit mode
+  if(TN.ptsLimit){
+    const g0=TN.rounds[0];if(g0){
+      const n1=P[g0.t1[0]]+' & '+P[g0.t1[1]],n2=P[g0.t2[0]]+' & '+P[g0.t2[1]];
+      const c1=cumul.cum1,c2=cumul.cum2;
+      const pct1=Math.min(100,Math.round(c1/TN.ptsLimit*100)),pct2=Math.min(100,Math.round(c2/TN.ptsLimit*100));
+      h+='<div style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px;margin-bottom:12px">';
+      if(winAt>=0){
+        const winner=c1>=TN.ptsLimit?n1:n2;
+        h+='<div style="text-align:center;font-size:16px;font-weight:700;color:#3fb950;margin-bottom:8px">🏆 '+esc(winner)+' gewinnt!</div>';
+      }else{
+        h+='<div style="text-align:center;font-size:11px;color:#8b949e;margin-bottom:8px">🎯 Ziel: '+TN.ptsLimit+' Punkte</div>';
+      }
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12px;font-weight:700;color:#e7af3b">'+n1+'</span><span style="font-size:20px;font-weight:700;color:#e7af3b">'+c1+'</span></div>';
+      h+='<div style="height:6px;background:#21262d;border-radius:3px;margin-bottom:10px;overflow:hidden"><div style="height:100%;width:'+pct1+'%;background:#e7af3b;border-radius:3px"></div></div>';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12px;font-weight:700;color:#58a6ff">'+n2+'</span><span style="font-size:20px;font-weight:700;color:#58a6ff">'+c2+'</span></div>';
+      h+='<div style="height:6px;background:#21262d;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct2+'%;background:#58a6ff;border-radius:3px"></div></div>';
+      h+='</div>';
+    }
+  }
+
   TN.rounds.forEach((g,gi)=>{
+    // In pts-limit mode: hide rounds after winner + 1 if they have no data
+    if(winAt>=0&&gi>winAt){const t=gTot(gi);if(!t.any)return}
+    // In pts-limit mode: hide empty rounds far ahead
+    if(TN.ptsLimit&&winAt<0&&gi>ao+2){const t=gTot(gi);if(!t.any)return}
+
     const n1=P[g.t1[0]]+' & '+P[g.t1[1]],n2=P[g.t2[0]]+' & '+P[g.t2[1]];
     const s1=P[g.t1[0]][0]+'+'+P[g.t1[1]][0],s2=P[g.t2[0]][0]+'+'+P[g.t2[1]][0];
     const pa=g.pa.length?g.pa.map(i=>P[i]).join(' & '):'—';const t=gTot(gi);
-    h+='<div class="gc"><div class="gh" onclick="tog('+gi+')"><span class="gnum">S'+(gi+1)+'</span><span class="gtitle">'+n1+' vs '+n2+'</span><span class="ghscore" id="hs-'+gi+'">'+(t.any?t.s1+':'+t.s2:'')+'</span><span class="ghst" id="hst-'+gi+'">'+(t.ok?'✅':t.any?'⏳':'')+'</span></div>';
-    h+='<div class="gbody'+(gi===ao?' open':'')+'" id="gb-'+gi+'">'+(g.pa.length?'<div class="pause">⏸ '+pa+' pausiert</div>':'');
+    const isWinRound=gi===winAt;
+    h+='<div class="gc"'+(isWinRound?' style="border-color:rgba(63,185,80,.4)"':'')+'><div class="gh" onclick="tog('+gi+')"><span class="gnum">S'+(gi+1)+'</span><span class="gtitle">'+n1+' vs '+n2+'</span><span class="ghscore" id="hs-'+gi+'">'+(t.any?t.s1+':'+t.s2:'')+'</span><span class="ghst" id="hst-'+gi+'">'+(t.ok?'✅':t.any?'⏳':'')+'</span></div>';
+    h+='<div class="gbody'+(gi===ao&&winAt<0?' open':'')+'" id="gb-'+gi+'">'+(g.pa.length?'<div class="pause">⏸ '+pa+' pausiert</div>':'');
     for(let ri=0;ri<4;ri++){const ans=g.ans[ri];const r=rd(gi,ri);const{w1,w2}=gW(gi,ri);const im=!!r.m;const a1=r.e==='s2'||im;const a2=r.e==='s1'||im;
       h+='<div class="ans-hdr"><span class="ans-badge">Ansage '+(ri+1)+'</span><span class="ans-who">🎯 '+P[ans]+' sagt an</span></div>';
       h+='<div class="srow"><span class="tn" style="color:#e7af3b">'+s1+'</span><input id="i-'+gi+'-'+ri+'-s1" type="number" inputmode="numeric" min="0" max="'+NRM+'" placeholder="Pkt"'+(a1?' class="auto"':'')+(im?' readonly':'')+' value="'+(r.s1!==null?r.s1:'')+'" onfocus="this.select()" oninput="setS('+gi+','+ri+',\'s1\')"><span class="vslbl">:</span><input id="i-'+gi+'-'+ri+'-s2" type="number" inputmode="numeric" min="0" max="'+NRM+'" placeholder="Pkt"'+(a2?' class="auto"':'')+(im?' readonly':'')+' value="'+(r.s2!==null?r.s2:'')+'" onfocus="this.select()" oninput="setS('+gi+','+ri+',\'s2\')"><span class="tn" style="color:#58a6ff;text-align:right">'+s2+'</span></div>';
