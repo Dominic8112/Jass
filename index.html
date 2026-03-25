@@ -344,20 +344,35 @@ async function doImport(){
       players:t.players,rounds:t.rounds,nr_rounds:t.nr
     }).select().single();
     if(error)throw error;
-    await sb.from('jass_participants').insert({tournament_id:tour.id,user_id:curUser.id,player_name:curUser.display_name});
+    // Participant MUSS zuerst existieren (RLS braucht das für Score-Insert)
+    const{error:pErr}=await sb.from('jass_participants').insert({tournament_id:tour.id,user_id:curUser.id,player_name:curUser.display_name});
+    if(pErr)throw pErr;
     // Import scores
     const rows=[];
     Object.entries(scores).forEach(([k,v])=>{
-      const[gi,ri]=k.split('-').map(Number);
-      if(v.s1!==null||v.s2!==null){
-        rows.push({tournament_id:tour.id,game_index:gi,round_index:ri,score_t1:v.s1,score_t2:v.s2,match_flag:v.m||0,entered_by:v.e,weisen:v.w||{},updated_by:curUser.id});
+      if(!v||typeof v!=='object')return;
+      const parts=k.split('-');
+      if(parts.length!==2)return;
+      const gi=parseInt(parts[0]),ri=parseInt(parts[1]);
+      if(isNaN(gi)||isNaN(ri))return;
+      // Score ist gültig wenn s1 oder s2 eine Zahl ist (auch 0)
+      if(v.s1!==null&&v.s1!==undefined||v.s2!==null&&v.s2!==undefined){
+        rows.push({
+          tournament_id:tour.id,game_index:gi,round_index:ri,
+          score_t1:v.s1!=null?v.s1:null,
+          score_t2:v.s2!=null?v.s2:null,
+          match_flag:v.m||0,entered_by:v.e||null,
+          weisen:v.w||{},updated_by:curUser.id
+        });
       }
     });
-    if(rows.length){await sb.from('jass_scores').insert(rows)}
-    // Clean up local storage
+    if(rows.length){
+      const{error:sErr}=await sb.from('jass_scores').insert(rows);
+      if(sErr){console.error('Score import error:',sErr);throw sErr}
+    }
     localStorage.removeItem('jt8_t');localStorage.removeItem('jt8_scores');
     document.getElementById('importBanner').style.display='none';
-    toast('Turnier importiert! Code: '+code);
+    toast(rows.length+' Ansagen importiert! Code: '+code);
     loadMyTournaments();
   }catch(e){alert('Import-Fehler: '+e.message);btn.disabled=false;btn.textContent='Importieren'}
 }
