@@ -636,9 +636,13 @@ function genCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i
 async function startT(){
   const btn=document.getElementById('sbtn');btn.disabled=true;btn.textContent='Wird erstellt...';
   const code=genCode(),tname=document.getElementById('tname').value.trim()||'Jass-Turnier';
-  let rounds=[];const nrToSave=ptsLimit>0?100:selR;
-  if(gameMode==='schieber'&&teamType==='fix'){
-    for(let r=0;r<nrToSave;r++){
+  let rounds=[];let nrToSave=selR;
+  if(gameMode==='schieber'&&teamType==='fix'&&ptsLimit>0){
+    // No pre-generated rounds needed - they are dynamic
+    rounds=[{t1:[...fixTeams[0]],t2:[...fixTeams[1]]}]; // just store the team config
+    nrToSave=0; // 0 = unlimited (pts limit mode)
+  }else if(gameMode==='schieber'&&teamType==='fix'){
+    for(let r=0;r<selR;r++){
       rounds.push({t1:[...fixTeams[0]],t2:[...fixTeams[1]],pa:[],ans:[fixTeams[0][r%2],fixTeams[1][r%2],fixTeams[0][(r+1)%2],fixTeams[1][(r+1)%2]]});
     }
   }else if(gameMode==='schieber'){
@@ -808,7 +812,12 @@ const hst=document.getElementById('hst-'+gi);if(hst)hst.textContent=t.ok?'✅':t
 
 function uPr(){
   if(TN.type==='molotow'){let d=0;for(let i=0;i<TN.nr;i++){const data=getMoloRound(i);if(data&&data.every(p=>p.cards!==null))d++}document.getElementById('pc').textContent=d;document.getElementById('pf').style.width=(d/TN.nr*100)+'%'}
-  else if(TN.ptsLimit){
+  else if(TN.type==='schieber_fix'&&TN.ptsLimit){
+    const c=getFixCumul();
+    const maxPts=Math.max(c.c1,c.c2);const pct=Math.min(100,Math.round(maxPts/TN.ptsLimit*100));
+    document.getElementById('pc').textContent=maxPts;document.getElementById('pt').textContent=TN.ptsLimit;
+    document.getElementById('punit').textContent='Punkte';document.getElementById('pf').style.width=pct+'%';
+  }else if(TN.ptsLimit){
     const c=getCumulScores();if(!c)return;
     const maxPts=Math.max(c.cum1,c.cum2);const pct=Math.min(100,Math.round(maxPts/TN.ptsLimit*100));
     document.getElementById('pc').textContent=maxPts;document.getElementById('pt').textContent=TN.ptsLimit;
@@ -890,8 +899,10 @@ function getFixRound(ri){return rd(ri,0)}
 
 function getFixCumul(){
   let c1=0,c2=0,winAt=-1,rounds=0;
-  for(let ri=0;ri<TN.nr;ri++){
-    const r=getFixRound(ri);
+  // Iterate through all scored rounds dynamically
+  for(let ri=0;ri<9999;ri++){
+    const k=ri+'-0';if(!D[k])break;
+    const r=D[k];
     if(r.s1===null&&!r.m)break;
     let s1=r.s1||0,s2=r.s2||0;
     const{w1,w2}=gW(ri,0);
@@ -963,16 +974,17 @@ function renderFixPts(){
   h+='<div style="height:6px;background:#21262d;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct2+'%;background:#58a6ff;border-radius:3px"></div></div>';
   h+='</div>';
 
-  // Rounds - simple list
+  // Rounds - dynamic list (show completed + next empty)
   let firstEmpty=-1;
-  for(let ri=0;ri<TN.nr;ri++){
+  const maxRi=c.rounds+2; // show up to 2 ahead of last completed
+  for(let ri=0;ri<maxRi;ri++){
     const r=getFixRound(ri);
     const done=r.s1!==null||r.m;
     const{w1,w2}=gW(ri,0);
     const ts1=(r.s1||0)+w1,ts2=(r.s2||0)+w2;
-    if(c.winAt>=0&&ri>c.winAt&&!done)break; // hide after winner
+    if(c.winAt>=0&&ri>c.winAt&&!done)break;
     if(!done&&firstEmpty<0)firstEmpty=ri;
-    if(!done&&firstEmpty>=0&&ri>firstEmpty+1)break; // show only next empty
+    if(!done&&firstEmpty>=0&&ri>firstEmpty)break; // show only 1 empty round
     const isOpen=ri===firstEmpty&&c.winAt<0;
 
     h+='<div class="gc"'+(ri===c.winAt?' style="border-color:rgba(63,185,80,.4)"':'')+'>';
