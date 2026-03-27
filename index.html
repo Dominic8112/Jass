@@ -675,7 +675,7 @@ function subscribeRT(tid){
     .on('postgres_changes',{event:'*',schema:'public',table:'jass_scores',filter:'tournament_id=eq.'+tid},p=>{
       const s=p.new;if(!s)return;
       D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{},md:s.molotow_data||null};
-      if(TN.type==='molotow'){renderMolo()}else{uDisp(s.game_index,s.round_index);uTot(s.game_index)}
+      if(TN.type==='molotow'){renderMolo()}else if(TN.type==='schieber_fix'&&TN.ptsLimit){renderFixPts()}else{uDisp(s.game_index,s.round_index);uTot(s.game_index)}
     }).subscribe(st=>{if(dot)dot.className='sync-dot '+(st==='SUBSCRIBED'?'sync-on':'sync-off')});
 }
 
@@ -691,11 +691,13 @@ function showApp(){
   document.getElementById('pt').textContent=TN.nr;
   document.getElementById('punit').textContent=isMolo?'Runden':'Spiele';
   document.getElementById('pf').className='pfill'+(isMolo?' molo':'');
+  const isFixPts=TN.type==='schieber_fix'&&TN.ptsLimit>0;
   // Tabs
   const tabs=document.getElementById('app-tabs');
   if(isMolo){tabs.innerHTML='<div class="tab active molo" onclick="stab(\'games\',this)">💣 Runden</div><div class="tab" onclick="stab(\'rank\',this)">🏆 Rangliste</div><div class="tab" onclick="stab(\'stats\',this)">📊 Stats</div>'}
+  else if(isFixPts){tabs.innerHTML='<div class="tab active" onclick="stab(\'games\',this)">🃏 Runden</div><div class="tab" onclick="stab(\'rank\',this)">🏆 Stand</div><div class="tab" onclick="stab(\'stats\',this)">📊 Stats</div>'}
   else{tabs.innerHTML='<div class="tab active" onclick="stab(\'games\',this)">🃏 Spiele</div><div class="tab" onclick="stab(\'rank\',this)">🏆 Rangliste</div><div class="tab" onclick="stab(\'stats\',this)">📊 Stats</div>'}
-  if(isMolo){renderMolo()}else{renderG()}
+  if(isMolo){renderMolo()}else if(isFixPts){renderFixPts()}else{renderG()}
   uPr();
 }
 function copyCode(){navigator.clipboard.writeText(TN.code).then(()=>toast('Code kopiert: '+TN.code)).catch(()=>{})}
@@ -765,7 +767,10 @@ function saveScore(gi,ri){const tk=gi+'-'+ri;clearTimeout(saveTimers[tk]);saveTi
 },300)}
 
 function stab(id,el){document.querySelectorAll('.tab').forEach(t=>{t.classList.remove('active');t.classList.remove('molo')});document.querySelectorAll('.pnl').forEach(p=>p.classList.remove('active'));el.classList.add('active');if(TN.type==='molotow')el.classList.add('molo');document.getElementById('p-'+id).classList.add('active');
-  if(id==='rank'){TN.type==='molotow'?rRkMolo():rRk()}if(id==='stats'){TN.type==='molotow'?rStMolo():rSt()}}
+  const isFixPts2=TN.type==='schieber_fix'&&TN.ptsLimit;
+  if(id==='rank'){TN.type==='molotow'?rRkMolo():isFixPts2?rRkFixPts():rRk()}
+  if(id==='stats'){TN.type==='molotow'?rStMolo():rSt()}
+  if(id==='games'&&isFixPts2)renderFixPts()}
 function tog(i){document.getElementById('gb-'+i).classList.toggle('open')}
 function togW(g,r){document.getElementById('wb-'+g+'-'+r).classList.toggle('open')}
 
@@ -877,6 +882,147 @@ function renderG(){
     h+='<div class="gtotal" id="gt-'+gi+'"><div><div class="gl">'+(t.ok?'✅ Endstand':t.any?'⏳ Zwischenstand':'')+'</div>'+(wt?'<div class="gwintag">'+wt+'</div>':'')+'</div><div><span class="s1">'+t.s1+'</span><span class="vs"> : </span><span class="s2">'+t.s2+'</span></div></div></div></div>'});
   h+='<button class="nbtn" onclick="leaveTournament()">← Zurück zur Lobby</button>';
   document.getElementById('p-games').innerHTML=h}
+
+// ══════ FIX TEAMS + POINTS LIMIT ══════
+// Each round = 1 score (game_index=round, round_index=0): s1=team1 pts, s2=team2 pts, weisen in w
+
+function getFixRound(ri){return rd(ri,0)}
+
+function getFixCumul(){
+  let c1=0,c2=0,winAt=-1,rounds=0;
+  for(let ri=0;ri<TN.nr;ri++){
+    const r=getFixRound(ri);
+    if(r.s1===null&&!r.m)break;
+    let s1=r.s1||0,s2=r.s2||0;
+    const{w1,w2}=gW(ri,0);
+    s1+=w1;s2+=w2;
+    c1+=s1;c2+=s2;rounds++;
+    if(winAt<0&&TN.ptsLimit&&(c1>=TN.ptsLimit||c2>=TN.ptsLimit))winAt=ri;
+  }
+  return{c1,c2,winAt,rounds};
+}
+
+function setFixS(ri,val){
+  const r=getFixRound(ri);if(r.m)return;
+  if(val===''||isNaN(parseInt(val))){r.s1=null;r.s2=null;r.e=null}
+  else{const v=Math.max(0,Math.min(NRM,parseInt(val)));r.s1=v;r.s2=NRM-v;r.e='s1'}
+  saveScore(ri,0);
+  // Update display without full re-render
+  const el2=document.getElementById('fx-s2-'+ri);if(el2)el2.value=r.s2!==null?r.s2:'';
+  updFixCumulUI();
+}
+
+function setFixM(ri,tm){
+  const r=getFixRound(ri);
+  if(r.m===tm){r.m=0;r.s1=null;r.s2=null;r.e=null}
+  else{r.m=tm;if(tm===1){r.s1=MTC;r.s2=0}else{r.s2=MTC;r.s1=0}r.e=null}
+  saveScore(ri,0);renderFixPts();
+}
+
+function adjFixW(ri,wid,tm,d){
+  const r=getFixRound(ri);if(!r.w)r.w={};
+  const k=wid+'-'+tm;r.w[k]=Math.max(0,Math.min(9,(r.w[k]||0)+d));if(!r.w[k])delete r.w[k];
+  saveScore(ri,0);
+  const ne=document.getElementById('fwn-'+ri+'-'+wid+'-'+tm);if(ne)ne.textContent=r.w[k]||0;
+  const ce=document.getElementById('fwc-'+ri+'-'+wid+'-'+tm);if(ce)ce.classList.toggle('has',(r.w[k]||0)>0);
+  updFixCumulUI();
+}
+
+function updFixCumulUI(){
+  const c=getFixCumul();
+  const el=document.getElementById('fix-cumul');if(!el)return;
+  const g0=TN.rounds[0];if(!g0)return;
+  const P=TN.players,n1=P[g0.t1[0]]+' & '+P[g0.t1[1]],n2=P[g0.t2[0]]+' & '+P[g0.t2[1]];
+  const pct1=Math.min(100,Math.round(c.c1/TN.ptsLimit*100)),pct2=Math.min(100,Math.round(c.c2/TN.ptsLimit*100));
+  let wh='';
+  if(c.winAt>=0){wh='<div style="text-align:center;font-size:16px;font-weight:700;color:#3fb950;margin-bottom:8px">🏆 '+(c.c1>=TN.ptsLimit?esc(n1):esc(n2))+' gewinnt!</div>'}
+  else{wh='<div style="text-align:center;font-size:11px;color:#8b949e;margin-bottom:8px">🎯 Ziel: '+TN.ptsLimit+' Punkte · Runde '+c.rounds+'</div>'}
+  wh+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:700;color:#e7af3b">'+esc(n1)+'</span><span style="font-size:22px;font-weight:700;color:#e7af3b">'+c.c1+'</span></div>';
+  wh+='<div style="height:6px;background:#21262d;border-radius:3px;margin-bottom:8px;overflow:hidden"><div style="height:100%;width:'+pct1+'%;background:#e7af3b;border-radius:3px;transition:width .3s"></div></div>';
+  wh+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:700;color:#58a6ff">'+esc(n2)+'</span><span style="font-size:22px;font-weight:700;color:#58a6ff">'+c.c2+'</span></div>';
+  wh+='<div style="height:6px;background:#21262d;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct2+'%;background:#58a6ff;border-radius:3px;transition:width .3s"></div></div>';
+  el.innerHTML=wh;
+  uPr();
+}
+
+function renderFixPts(){
+  const P=TN.players,g0=TN.rounds[0];if(!g0)return;
+  const n1=P[g0.t1[0]]+' & '+P[g0.t1[1]],n2=P[g0.t2[0]]+' & '+P[g0.t2[1]];
+  const s1=P[g0.t1[0]][0]+'+'+P[g0.t1[1]][0],s2=P[g0.t2[0]][0]+'+'+P[g0.t2[1]][0];
+  const c=getFixCumul();
+  let h='';
+
+  // Cumulative banner
+  h+='<div id="fix-cumul" style="background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px;margin-bottom:12px">';
+  const pct1=Math.min(100,Math.round(c.c1/TN.ptsLimit*100)),pct2=Math.min(100,Math.round(c.c2/TN.ptsLimit*100));
+  if(c.winAt>=0){h+='<div style="text-align:center;font-size:16px;font-weight:700;color:#3fb950;margin-bottom:8px">🏆 '+(c.c1>=TN.ptsLimit?esc(n1):esc(n2))+' gewinnt!</div>'}
+  else{h+='<div style="text-align:center;font-size:11px;color:#8b949e;margin-bottom:8px">🎯 Ziel: '+TN.ptsLimit+' Punkte · Runde '+c.rounds+'</div>'}
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:700;color:#e7af3b">'+esc(n1)+'</span><span style="font-size:22px;font-weight:700;color:#e7af3b">'+c.c1+'</span></div>';
+  h+='<div style="height:6px;background:#21262d;border-radius:3px;margin-bottom:8px;overflow:hidden"><div style="height:100%;width:'+pct1+'%;background:#e7af3b;border-radius:3px"></div></div>';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:700;color:#58a6ff">'+esc(n2)+'</span><span style="font-size:22px;font-weight:700;color:#58a6ff">'+c.c2+'</span></div>';
+  h+='<div style="height:6px;background:#21262d;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct2+'%;background:#58a6ff;border-radius:3px"></div></div>';
+  h+='</div>';
+
+  // Rounds - simple list
+  let firstEmpty=-1;
+  for(let ri=0;ri<TN.nr;ri++){
+    const r=getFixRound(ri);
+    const done=r.s1!==null||r.m;
+    const{w1,w2}=gW(ri,0);
+    const ts1=(r.s1||0)+w1,ts2=(r.s2||0)+w2;
+    if(c.winAt>=0&&ri>c.winAt&&!done)break; // hide after winner
+    if(!done&&firstEmpty<0)firstEmpty=ri;
+    if(!done&&firstEmpty>=0&&ri>firstEmpty+1)break; // show only next empty
+    const isOpen=ri===firstEmpty&&c.winAt<0;
+
+    h+='<div class="gc"'+(ri===c.winAt?' style="border-color:rgba(63,185,80,.4)"':'')+'>';
+    h+='<div class="gh" onclick="tog('+ri+')"><span class="gnum">R'+(ri+1)+'</span><span class="gtitle">'+s1+' vs '+s2+'</span>';
+    h+='<span class="ghscore" id="hs-'+ri+'">'+(done?ts1+':'+ts2:'')+'</span><span class="ghst">'+(done?'✅':'')+'</span></div>';
+    h+='<div class="gbody'+(isOpen?' open':'')+'" id="gb-'+ri+'">';
+
+    // Single score input row
+    h+='<div class="srow" style="margin:8px 0"><span class="tn" style="color:#e7af3b">'+s1+'</span>';
+    h+='<input id="fx-s1-'+ri+'" type="number" inputmode="numeric" min="0" max="'+NRM+'" placeholder="Pkt"'+(r.m?' class="auto" readonly':'')+' value="'+(r.s1!==null?r.s1:'')+'" onfocus="this.select()" oninput="setFixS('+ri+',this.value)">';
+    h+='<span class="vslbl">:</span>';
+    h+='<input id="fx-s2-'+ri+'" type="number" class="auto" readonly value="'+(r.s2!==null?r.s2:'')+'" style="max-width:65px">';
+    h+='<span class="tn" style="color:#58a6ff;text-align:right">'+s2+'</span></div>';
+
+    // Match buttons
+    h+='<div class="mrow"><div class="mbtn'+(r.m===1?' active':'')+'" onclick="setFixM('+ri+',1)">💥 Match '+s1+'</div><div class="mbtn'+(r.m===2?' active':'')+'" onclick="setFixM('+ri+',2)">💥 Match '+s2+'</div></div>';
+
+    // Weisen toggle
+    h+='<div class="wtoggle" onclick="document.getElementById(\'fwb-'+ri+'\').classList.toggle(\'open\')">+ Weisen</div>';
+    h+='<div class="wblock" id="fwb-'+ri+'"><div class="whdr"><span style="color:#e7af3b">'+s1+'</span><span>Weis</span><span style="color:#58a6ff">'+s2+'</span></div>';
+    WS.forEach(wt=>{
+      const c1=(r.w&&r.w[wt.id+'-1'])||0,c2=(r.w&&r.w[wt.id+'-2'])||0;
+      h+='<div class="wrow"><div class="wcnt t1'+(c1?' has':'')+'" id="fwc-'+ri+'-'+wt.id+'-1"><button onclick="adjFixW('+ri+',\''+wt.id+'\',1,-1)">−</button><div class="num" id="fwn-'+ri+'-'+wt.id+'-1">'+c1+'</div><button onclick="adjFixW('+ri+',\''+wt.id+'\',1,1)">+</button></div>';
+      h+='<div class="wname">'+wt.n+' <span class="wp">'+wt.p+'</span></div>';
+      h+='<div class="wcnt t2'+(c2?' has':'')+'" id="fwc-'+ri+'-'+wt.id+'-2"><button onclick="adjFixW('+ri+',\''+wt.id+'\',2,-1)">−</button><div class="num" id="fwn-'+ri+'-'+wt.id+'-2">'+c2+'</div><button onclick="adjFixW('+ri+',\''+wt.id+'\',2,1)">+</button></div></div>'});
+    h+='</div>'; // wblock
+
+    // Total for this round
+    if(done){h+='<div class="gtotal"><div class="gl">Runde '+(ri+1)+'</div><div><span class="s1">'+ts1+'</span><span class="vs"> : </span><span class="s2">'+ts2+'</span></div></div>'}
+    h+='</div></div>'; // gbody + gc
+  }
+  h+='<button class="nbtn" onclick="leaveTournament()">← Zurück zur Lobby</button>';
+  document.getElementById('p-games').innerHTML=h;uPr();
+}
+
+function rRkFixPts(){
+  const c=getFixCumul();const g0=TN.rounds[0];if(!g0){document.getElementById('p-rank').innerHTML='<div class="empty">Noch keine Runden</div>';return}
+  const P=TN.players,n1=P[g0.t1[0]]+' & '+P[g0.t1[1]],n2=P[g0.t2[0]]+' & '+P[g0.t2[1]];
+  let h='<div style="text-align:center;margin-bottom:16px;font-size:11px;color:#8b949e">'+c.rounds+' Runden gespielt'+(c.winAt>=0?' · Beendet':'')+'</div>';
+  const t1Won=c.c1>c.c2,t2Won=c.c2>c.c1,tied=c.c1===c.c2;
+  h+='<div class="rr" style="'+(t1Won?'border-color:rgba(231,175,59,.4)':'')+'"><div class="rpos '+(t1Won?'r1':t2Won?'r2':'r1')+'">'+(!t2Won?'1':'2')+'</div><div class="rnm">'+(t1Won?'👑 ':'')+n1+'</div><div class="rst"><span class="pp">'+c.c1+'</span>Ø '+Math.round(c.c1/(c.rounds||1))+' pro Runde</div></div>';
+  h+='<div class="rr" style="'+(t2Won?'border-color:rgba(88,166,255,.4)':'')+'"><div class="rpos '+(t2Won?'r1':t1Won?'r2':'r1')+'">'+(!t1Won?'1':'2')+'</div><div class="rnm">'+(t2Won?'👑 ':'')+n2+'</div><div class="rst"><span class="pp" style="color:#58a6ff">'+c.c2+'</span>Ø '+Math.round(c.c2/(c.rounds||1))+' pro Runde</div></div>';
+  if(c.rounds){
+    h+='<div class="sc" style="margin-top:12px"><h3>📊 Rundenübersicht</h3>';
+    for(let ri=0;ri<c.rounds;ri++){const r=getFixRound(ri);const{w1,w2}=gW(ri,0);const ts1=(r.s1||0)+w1,ts2=(r.s2||0)+w2;
+      h+='<div class="sr"><span>Runde '+(ri+1)+'</span><span class="v"><span style="color:#e7af3b">'+ts1+'</span> : <span style="color:#58a6ff">'+ts2+'</span></span></div>'}
+    h+='</div>';
+  }
+  document.getElementById('p-rank').innerHTML=h;
+}
 
 // ══════ MOLOTOW LOGIC ══════
 // Data per player: {cards, match, zero, hweise:{wid:count}, tweise:{wid:count}}
