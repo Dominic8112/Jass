@@ -787,7 +787,9 @@ function setM(gi,ri,tm){const r=rd(gi,ri);if(r.m===tm){r.m=0;r.s1=null;r.s2=null
 saveScore(gi,ri);uDisp(gi,ri);uTot(gi)}
 
 function uDisp(gi,ri){const r=rd(gi,ri);const i1=document.getElementById('i-'+gi+'-'+ri+'-s1'),i2=document.getElementById('i-'+gi+'-'+ri+'-s2');if(!i1)return;
-i1.value=r.s1!==null?r.s1:'';i2.value=r.s2!==null?r.s2:'';
+// Only update value if this field is NOT currently focused (being edited)
+if(document.activeElement!==i1)i1.value=r.s1!==null?r.s1:'';
+if(document.activeElement!==i2)i2.value=r.s2!==null?r.s2:'';
 i1.className=i1.className.replace(' auto','');i2.className=i2.className.replace(' auto','');
 if(r.m){i1.className+=' auto';i2.className+=' auto'}else if(r.e==='s1')i2.className+=' auto';else if(r.e==='s2')i1.className+=' auto';
 i1.readOnly=!!r.m;i2.readOnly=!!r.m;
