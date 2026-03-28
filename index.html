@@ -915,13 +915,15 @@ function getFixCumul(){
   return{c1,c2,winAt,rounds};
 }
 
-function setFixS(ri,val){
+function setFixS(ri,side,val){
   const r=getFixRound(ri);if(r.m)return;
   if(val===''||isNaN(parseInt(val))){r.s1=null;r.s2=null;r.e=null}
-  else{const v=Math.max(0,Math.min(NRM,parseInt(val)));r.s1=v;r.s2=NRM-v;r.e='s1'}
+  else{const v=Math.max(0,Math.min(NRM,parseInt(val)));
+    if(side==='s1'){r.s1=v;r.s2=NRM-v;r.e='s1'}else{r.s2=v;r.s1=NRM-v;r.e='s2'}}
   saveScore(ri,0);
-  // Update display without full re-render
-  const el2=document.getElementById('fx-s2-'+ri);if(el2)el2.value=r.s2!==null?r.s2:'';
+  // Update the other field (not the one being edited)
+  if(side==='s1'){const el2=document.getElementById('fx-s2-'+ri);if(el2)el2.value=r.s2!==null?r.s2:''}
+  else{const el1=document.getElementById('fx-s1-'+ri);if(el1)el1.value=r.s1!==null?r.s1:''}
   updFixCumulUI();
 }
 
@@ -994,11 +996,12 @@ function renderFixPts(){
     h+='<span class="ghscore" id="hs-'+ri+'">'+(done?ts1+':'+ts2:'')+'</span><span class="ghst">'+(done?'✅':'')+'</span></div>';
     h+='<div class="gbody'+(isOpen?' open':'')+'" id="gb-'+ri+'">';
 
-    // Single score input row
+    // Single score input row - both sides editable
     h+='<div class="srow" style="margin:8px 0"><span class="tn" style="color:#e7af3b">'+s1+'</span>';
-    h+='<input id="fx-s1-'+ri+'" type="number" inputmode="numeric" min="0" max="'+NRM+'" placeholder="Pkt"'+(r.m?' class="auto" readonly':'')+' value="'+(r.s1!==null?r.s1:'')+'" onfocus="this.select()" oninput="setFixS('+ri+',this.value)">';
+    const fxA1=r.e==='s2'||r.m;const fxA2=r.e==='s1'||r.m;
+    h+='<input id="fx-s1-'+ri+'" type="number" inputmode="numeric" min="0" max="'+NRM+'" placeholder="Pkt"'+(fxA1?' class="auto"':'')+(r.m?' readonly':'')+' value="'+(r.s1!==null?r.s1:'')+'" onfocus="this.select()" oninput="setFixS('+ri+',\'s1\',this.value)">';
     h+='<span class="vslbl">:</span>';
-    h+='<input id="fx-s2-'+ri+'" type="number" class="auto" readonly value="'+(r.s2!==null?r.s2:'')+'" style="max-width:65px">';
+    h+='<input id="fx-s2-'+ri+'" type="number" inputmode="numeric" min="0" max="'+NRM+'" placeholder="Pkt"'+(fxA2?' class="auto"':'')+(r.m?' readonly':'')+' value="'+(r.s2!==null?r.s2:'')+'" onfocus="this.select()" oninput="setFixS('+ri+',\'s2\',this.value)">';
     h+='<span class="tn" style="color:#58a6ff;text-align:right">'+s2+'</span></div>';
 
     // Match buttons
