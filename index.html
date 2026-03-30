@@ -771,10 +771,10 @@ function saveScore(gi,ri){const tk=gi+'-'+ri;clearTimeout(saveTimers[tk]);saveTi
 },300)}
 
 function stab(id,el){document.querySelectorAll('.tab').forEach(t=>{t.classList.remove('active');t.classList.remove('molo')});document.querySelectorAll('.pnl').forEach(p=>p.classList.remove('active'));el.classList.add('active');if(TN.type==='molotow')el.classList.add('molo');document.getElementById('p-'+id).classList.add('active');
-  const isFixPts2=TN.type==='schieber_fix'&&TN.ptsLimit;
-  if(id==='rank'){TN.type==='molotow'?rRkMolo():isFixPts2?rRkFixPts():rRk()}
-  if(id==='stats'){TN.type==='molotow'?rStMolo():isFixPts2?rStFixPts():rSt()}
-  if(id==='games'&&isFixPts2)renderFixPts()}
+  const isFP=TN.type==='schieber_fix'&&TN.ptsLimit>0;
+  if(id==='rank'){TN.type==='molotow'?rRkMolo():isFP?rRkFixPts():rRk()}
+  if(id==='stats'){TN.type==='molotow'?rStMolo():isFP?rStFixPts():rSt()}
+  if(id==='games'){if(isFP)renderFixPts();else if(TN.type==='molotow')renderMolo();else renderG()}}
 function tog(i){document.getElementById('gb-'+i).classList.toggle('open')}
 function togW(g,r){document.getElementById('wb-'+g+'-'+r).classList.toggle('open')}
 
