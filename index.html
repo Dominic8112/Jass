@@ -679,7 +679,11 @@ function subscribeRT(tid){
     .on('postgres_changes',{event:'*',schema:'public',table:'jass_scores',filter:'tournament_id=eq.'+tid},p=>{
       const s=p.new;if(!s)return;
       D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{},md:s.molotow_data||null};
-      if(TN.type==='molotow'){renderMolo()}else if(TN.type==='schieber_fix'&&TN.ptsLimit){updFixCumulUI()}else{uDisp(s.game_index,s.round_index);uTot(s.game_index)}
+      if(TN.type==='molotow'){renderMolo()}else if(TN.type==='schieber_fix'&&TN.ptsLimit){
+        // Only full re-render if no input is focused (user not typing)
+        const ae=document.activeElement;const isTyping=ae&&ae.tagName==='INPUT'&&ae.type==='number';
+        if(isTyping){updFixCumulUI()}else{renderFixPts()}
+      }else{uDisp(s.game_index,s.round_index);uTot(s.game_index)}
     }).subscribe(st=>{if(dot)dot.className='sync-dot '+(st==='SUBSCRIBED'?'sync-on':'sync-off')});
 }
 
@@ -921,10 +925,12 @@ function setFixS(ri,side,val){
   else{const v=Math.max(0,Math.min(NRM,parseInt(val)));
     if(side==='s1'){r.s1=v;r.s2=NRM-v;r.e='s1'}else{r.s2=v;r.s1=NRM-v;r.e='s2'}}
   saveScore(ri,0);
-  // Update the other field (not the one being edited)
-  if(side==='s1'){const el2=document.getElementById('fx-s2-'+ri);if(el2)el2.value=r.s2!==null?r.s2:''}
-  else{const el1=document.getElementById('fx-s1-'+ri);if(el1)el1.value=r.s1!==null?r.s1:''}
+  if(side==='s1'){const el2=document.getElementById('fx-s2-'+ri);if(el2){el2.value=r.s2!==null?r.s2:'';el2.className='auto'}}
+  else{const el1=document.getElementById('fx-s1-'+ri);if(el1){el1.value=r.s1!==null?r.s1:'';el1.className='auto'}}
   updFixCumulUI();
+  // Re-render after user finishes typing (on blur) to show next round
+  const inp=document.getElementById('fx-'+side+'-'+ri);
+  if(inp&&r.s1!==null){inp.onblur=function(){setTimeout(renderFixPts,100);inp.onblur=null}}
 }
 
 function setFixM(ri,tm){
