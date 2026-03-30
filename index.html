@@ -679,7 +679,7 @@ function subscribeRT(tid){
     .on('postgres_changes',{event:'*',schema:'public',table:'jass_scores',filter:'tournament_id=eq.'+tid},p=>{
       const s=p.new;if(!s)return;
       D[s.game_index+'-'+s.round_index]={s1:s.score_t1,s2:s.score_t2,m:s.match_flag||0,e:s.entered_by,w:s.weisen||{},md:s.molotow_data||null};
-      if(TN.type==='molotow'){renderMolo()}else if(TN.type==='schieber_fix'&&TN.ptsLimit){renderFixPts()}else{uDisp(s.game_index,s.round_index);uTot(s.game_index)}
+      if(TN.type==='molotow'){renderMolo()}else if(TN.type==='schieber_fix'&&TN.ptsLimit){updFixCumulUI()}else{uDisp(s.game_index,s.round_index);uTot(s.game_index)}
     }).subscribe(st=>{if(dot)dot.className='sync-dot '+(st==='SUBSCRIBED'?'sync-on':'sync-off')});
 }
 
@@ -768,7 +768,7 @@ function saveScore(gi,ri){const tk=gi+'-'+ri;clearTimeout(saveTimers[tk]);saveTi
   const r=rd(gi,ri);
   try{const{error}=await sb.from('jass_scores').upsert({tournament_id:curTournament,game_index:gi,round_index:ri,score_t1:r.s1,score_t2:r.s2,match_flag:r.m,entered_by:r.e,weisen:r.w||{},updated_by:curUser.id},{onConflict:'tournament_id,game_index,round_index'});
   if(error){console.error('Save:',error);toast('⚠️ '+error.message)}}catch(e){console.error(e);toast('⚠️ '+e.message)}
-},300)}
+},800)}
 
 function stab(id,el){document.querySelectorAll('.tab').forEach(t=>{t.classList.remove('active');t.classList.remove('molo')});document.querySelectorAll('.pnl').forEach(p=>p.classList.remove('active'));el.classList.add('active');if(TN.type==='molotow')el.classList.add('molo');document.getElementById('p-'+id).classList.add('active');
   const isFP=TN.type==='schieber_fix'&&TN.ptsLimit>0;
