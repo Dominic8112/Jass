@@ -928,10 +928,11 @@ function setFixS(ri,side,val){
   if(side==='s1'){const el2=document.getElementById('fx-s2-'+ri);if(el2){el2.value=r.s2!==null?r.s2:'';el2.className='auto'}}
   else{const el1=document.getElementById('fx-s1-'+ri);if(el1){el1.value=r.s1!==null?r.s1:'';el1.className='auto'}}
   updFixCumulUI();
-  // Re-render after user finishes typing (on blur) to show next round
-  const inp=document.getElementById('fx-'+side+'-'+ri);
-  if(inp&&r.s1!==null){inp.onblur=function(){setTimeout(renderFixPts,100);inp.onblur=null}}
+  // Delayed re-render to show next round (waits for typing to finish)
+  clearTimeout(fixRenderTimer);
+  if(r.s1!==null){fixRenderTimer=setTimeout(renderFixPts,1200)}
 }
+let fixRenderTimer=null;
 
 function setFixM(ri,tm){
   const r=getFixRound(ri);
