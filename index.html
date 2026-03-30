@@ -773,7 +773,7 @@ function saveScore(gi,ri){const tk=gi+'-'+ri;clearTimeout(saveTimers[tk]);saveTi
 function stab(id,el){document.querySelectorAll('.tab').forEach(t=>{t.classList.remove('active');t.classList.remove('molo')});document.querySelectorAll('.pnl').forEach(p=>p.classList.remove('active'));el.classList.add('active');if(TN.type==='molotow')el.classList.add('molo');document.getElementById('p-'+id).classList.add('active');
   const isFixPts2=TN.type==='schieber_fix'&&TN.ptsLimit;
   if(id==='rank'){TN.type==='molotow'?rRkMolo():isFixPts2?rRkFixPts():rRk()}
-  if(id==='stats'){TN.type==='molotow'?rStMolo():rSt()}
+  if(id==='stats'){TN.type==='molotow'?rStMolo():isFixPts2?rStFixPts():rSt()}
   if(id==='games'&&isFixPts2)renderFixPts()}
 function tog(i){document.getElementById('gb-'+i).classList.toggle('open')}
 function togW(g,r){document.getElementById('wb-'+g+'-'+r).classList.toggle('open')}
@@ -1052,6 +1052,57 @@ function rRkFixPts(){
     h+='</div>';
   }
   document.getElementById('p-rank').innerHTML=h;
+}
+
+function rStFixPts(){
+  const c=getFixCumul();const g0=TN.rounds[0];
+  if(!g0||!c.rounds){document.getElementById('p-stats').innerHTML='<div class="empty">Stats nach der ersten Runde 📊</div>';return}
+  const P=TN.players,n1=P[g0.t1[0]]+' & '+P[g0.t1[1]],n2=P[g0.t2[0]]+' & '+P[g0.t2[1]];
+  let t1Wins=0,t2Wins=0,draws=0,t1Matches=0,t2Matches=0;
+  let t1Best=0,t1Worst=999,t2Best=0,t2Worst=999,t1Weisen=0,t2Weisen=0;
+  const rData=[];
+  for(let ri=0;ri<c.rounds;ri++){
+    const r=getFixRound(ri);const{w1,w2}=gW(ri,0);
+    const ts1=(r.s1||0)+w1,ts2=(r.s2||0)+w2;
+    rData.push({s1:ts1,s2:ts2,m:r.m});
+    if(ts1>ts2)t1Wins++;else if(ts2>ts1)t2Wins++;else draws++;
+    if(r.m===1)t1Matches++;if(r.m===2)t2Matches++;
+    if(ts1>t1Best)t1Best=ts1;if(ts1<t1Worst)t1Worst=ts1;
+    if(ts2>t2Best)t2Best=ts2;if(ts2<t2Worst)t2Worst=ts2;
+    t1Weisen+=w1;t2Weisen+=w2;
+  }
+  const t1Avg=Math.round(c.c1/c.rounds),t2Avg=Math.round(c.c2/c.rounds);
+  let h='';
+  h+='<div class="sc"><h3>📊 Fortschritt</h3>';
+  h+='<div class="sr"><span>Runden</span><span class="v">'+c.rounds+'</span></div>';
+  h+='<div class="sr"><span>Gesamtstand</span><span class="v"><span style="color:#e7af3b">'+c.c1+'</span> : <span style="color:#58a6ff">'+c.c2+'</span></span></div>';
+  if(TN.ptsLimit){h+='<div class="sr"><span>Ziel</span><span class="v">'+TN.ptsLimit+' Pkt ('+Math.min(100,Math.round(Math.max(c.c1,c.c2)/TN.ptsLimit*100))+'%)</span></div>'}
+  h+='</div>';
+  h+='<div class="sc"><h3>⚔️ Vergleich</h3>';
+  h+='<div style="display:flex;gap:8px;margin-bottom:6px"><div style="flex:1;text-align:center;font-size:12px;font-weight:700;color:#e7af3b">'+esc(n1)+'</div><div style="flex:1;text-align:center;font-size:12px;font-weight:700;color:#58a6ff">'+esc(n2)+'</div></div>';
+  h+='<div class="sr"><span style="color:#e7af3b">'+c.c1+'</span><span>Total</span><span style="color:#58a6ff">'+c.c2+'</span></div>';
+  h+='<div class="sr"><span style="color:#e7af3b">'+t1Avg+'</span><span>Ø pro Runde</span><span style="color:#58a6ff">'+t2Avg+'</span></div>';
+  h+='<div class="sr"><span style="color:#e7af3b">'+t1Wins+'</span><span>Runden gewonnen</span><span style="color:#58a6ff">'+t2Wins+'</span></div>';
+  if(draws)h+='<div class="sr"><span></span><span>Unentschieden: '+draws+'</span><span></span></div>';
+  h+='<div class="sr"><span style="color:#e7af3b">'+t1Best+'</span><span>Beste Runde</span><span style="color:#58a6ff">'+t2Best+'</span></div>';
+  h+='<div class="sr"><span style="color:#e7af3b">'+t1Worst+'</span><span>Schlechteste</span><span style="color:#58a6ff">'+t2Worst+'</span></div>';
+  h+='<div class="sr"><span style="color:#e7af3b">'+t1Matches+'x💥</span><span>Matches</span><span style="color:#58a6ff">'+t2Matches+'x💥</span></div>';
+  h+='<div class="sr"><span style="color:#e7af3b">'+t1Weisen+'</span><span>Weis-Punkte</span><span style="color:#58a6ff">'+t2Weisen+'</span></div>';
+  h+='</div>';
+  h+='<div class="sc"><h3>🏆 Highlights</h3>';
+  const leader=c.c1>c.c2?n1:c.c2>c.c1?n2:'Gleichstand';
+  h+='<div class="sr"><span>Führung</span><span class="v">'+(c.c1!==c.c2?esc(leader)+' (+'+Math.abs(c.c1-c.c2)+')':'Gleichstand')+'</span></div>';
+  let bestR={s:0,ri:0,team:''};rData.forEach((r,ri)=>{if(r.s1>bestR.s){bestR={s:r.s1,ri,team:n1}}if(r.s2>bestR.s){bestR={s:r.s2,ri,team:n2}}});
+  h+='<div class="sr"><span>Beste Einzelrunde</span><span class="v">'+esc(bestR.team)+' R'+(bestR.ri+1)+' ('+bestR.s+')</span></div>';
+  let str1=0,str2=0,mx1=0,mx2=0;rData.forEach(r=>{if(r.s1>r.s2){str1++;str2=0}else if(r.s2>r.s1){str2++;str1=0}else{str1=0;str2=0}if(str1>mx1)mx1=str1;if(str2>mx2)mx2=str2});
+  if(mx1>1||mx2>1){h+='<div class="sr"><span>Längste Serie</span><span class="v">'+esc(mx1>=mx2?n1:n2)+' ('+Math.max(mx1,mx2)+'x)</span></div>'}
+  h+='</div>';
+  h+='<div class="sc"><h3>📈 Verlauf</h3>';
+  let cum1=0,cum2=0;rData.forEach((r,ri)=>{cum1+=r.s1;cum2+=r.s2;
+    const lead=cum1>cum2?'🟡':cum2>cum1?'🔵':'⚪';const diff=Math.abs(cum1-cum2);
+    h+='<div class="sr"><span>R'+(ri+1)+': <span style="color:#e7af3b">'+r.s1+'</span>:<span style="color:#58a6ff">'+r.s2+'</span>'+(r.m?' 💥':'')+'</span><span class="v">'+lead+' '+cum1+':'+cum2+(diff?' (+'+diff+')':'')+'</span></div>'});
+  h+='</div>';
+  document.getElementById('p-stats').innerHTML=h;
 }
 
 async function rematchFix(){
